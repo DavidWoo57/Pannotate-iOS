@@ -237,6 +237,84 @@ struct FixedMockThumbnail: View {
     }
 }
 
+struct CurrentProjectBanner: View {
+    let prefix: String
+    let project: Project
+
+    var body: some View {
+        HStack(spacing: 12) {
+            FixedMockThumbnail(
+                style: project.thumbnail,
+                size: CGSize(width: 54, height: 40),
+                cornerRadius: 12
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(prefix): \(project.title)")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+                    .lineLimit(1)
+
+                Text("Current project")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(PannotateTheme.Colors.accent)
+            }
+
+            Spacer()
+
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.accent)
+        }
+        .padding(12)
+        .background(PannotateTheme.Colors.cardMuted)
+        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                .stroke(PannotateTheme.Colors.accent.opacity(0.32), lineWidth: 1)
+        )
+    }
+}
+
+struct ProjectRequiredEmptyState: View {
+    let title: String
+    let message: String
+    let buttonTitle: String
+    var action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer()
+
+            Image(systemName: "folder.badge.questionmark")
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(PannotateTheme.Colors.accent)
+                .frame(width: 92, height: 92)
+                .background(PannotateTheme.Colors.accentSoft.opacity(0.62))
+                .clipShape(Circle())
+
+            Text(title)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(PannotateTheme.Colors.primaryText)
+                .multilineTextAlignment(.center)
+
+            Text(message)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+
+            PrimaryActionButton(title: buttonTitle, systemImage: "folder") {
+                action()
+            }
+
+            Spacer()
+        }
+        .padding(PannotateTheme.Metrics.pagePadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PannotateTheme.Colors.background)
+    }
+}
+
 struct ManagementRenameSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String

@@ -2,6 +2,9 @@ import SwiftUI
 
 struct SequenceView: View {
     @Binding var clips: [SequenceClip]
+    let currentProject: Project?
+    var onShowProjects: () -> Void = {}
+
     @State private var activeSheet: SequenceSheet?
     @State private var clipPendingRemoval: SequenceClip?
     @State private var showRemoveConfirmation = false
@@ -12,32 +15,43 @@ struct SequenceView: View {
         VStack(spacing: 0) {
             header
 
-            ZStack {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(clips) { clip in
-                            VStack(spacing: 6) {
-                                sequenceRow(clip)
+            if let currentProject {
+                ZStack {
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            CurrentProjectBanner(prefix: "Sequence for", project: currentProject)
 
-                                if clip.continuesFromPreviousFrame {
-                                    Label("Continues from previous frame", systemImage: "link")
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(PannotateTheme.Colors.accent.opacity(0.74))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.leading, 142)
-                                        .padding(.top, -2)
+                            ForEach(clips) { clip in
+                                VStack(spacing: 6) {
+                                    sequenceRow(clip)
+
+                                    if clip.continuesFromPreviousFrame {
+                                        Label("Continues from previous frame", systemImage: "link")
+                                            .font(.footnote.weight(.semibold))
+                                            .foregroundStyle(PannotateTheme.Colors.accent.opacity(0.74))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.leading, 142)
+                                            .padding(.top, -2)
+                                    }
                                 }
                             }
-                        }
 
-                        addClipPlaceholder
+                            addClipPlaceholder
+                        }
+                        .padding(PannotateTheme.Metrics.pagePadding)
+                        .padding(.bottom, 22)
                     }
-                    .padding(PannotateTheme.Metrics.pagePadding)
-                    .padding(.bottom, 22)
                 }
-            }
-            .safeAreaInset(edge: .bottom) {
-                actionBar
+                .safeAreaInset(edge: .bottom) {
+                    actionBar
+                }
+            } else {
+                ProjectRequiredEmptyState(
+                    title: "Select a project first",
+                    message: "Sequences are scoped to the current project. Choose or create a project before arranging clips.",
+                    buttonTitle: "Go to Projects",
+                    action: onShowProjects
+                )
             }
         }
         .pannotatePage()
@@ -70,7 +84,10 @@ struct SequenceView: View {
 
     private var header: some View {
         VStack(spacing: 18) {
-            PageTitle(title: "Sequence", subtitle: "\(clips.count) clips · \(totalDuration)s total")
+            PageTitle(
+                title: "Sequence",
+                subtitle: currentProject.map { "Sequence for \($0.title) · \(clips.count) clips · \(totalDuration)s total" } ?? "Select a project first"
+            )
         }
         .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
         .padding(.top, 14)
@@ -359,5 +376,5 @@ private struct SequencePlaceholderSheet: View {
 }
 
 #Preview {
-    SequenceView(clips: .constant(MockPannotateData.sequenceClips))
+    SequenceView(clips: .constant(MockPannotateData.sequenceClips), currentProject: MockPannotateData.projects.first)
 }

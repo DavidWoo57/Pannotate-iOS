@@ -2,6 +2,10 @@ import SwiftUI
 
 struct ProjectsView: View {
     @Binding var projects: [Project]
+    @Binding var currentProjectID: UUID?
+    var onProjectCreated: (Project) -> Void = { _ in }
+    var onProjectDeleted: (Project) -> Void = { _ in }
+
     @State private var isPresentingNewProject = false
     @State private var projectToRename: Project?
     @State private var projectPendingDeletion: Project?
@@ -36,7 +40,10 @@ struct ProjectsView: View {
 
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                     projects.insert(project, at: 0)
+                    currentProjectID = project.id
                 }
+
+                onProjectCreated(project)
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -94,11 +101,15 @@ struct ProjectsView: View {
     }
 
     private func projectRow(_ project: Project) -> some View {
-        HStack(spacing: 14) {
+        let isCurrent = project.id == currentProjectID
+
+        return HStack(spacing: 14) {
             NavigationLink {
                 ProjectDetailPlaceholderView(
                     project: project,
+                    isCurrent: isCurrent,
                     onRename: { projectToRename = project },
+                    onSelect: { currentProjectID = project.id },
                     onDelete: { delete(project) }
                 )
             } label: {
@@ -110,9 +121,21 @@ struct ProjectsView: View {
                     )
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(project.title)
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(PannotateTheme.Colors.primaryText)
+                        HStack(spacing: 8) {
+                            Text(project.title)
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                            if isCurrent {
+                                Label("Current", systemImage: "checkmark.circle.fill")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(PannotateTheme.Colors.accent)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(PannotateTheme.Colors.accentSoft.opacity(0.7))
+                                    .clipShape(Capsule())
+                            }
+                        }
 
                         Text("\(project.clipCount) clips · \(project.updatedAt)")
                             .font(.subheadline.weight(.semibold))
@@ -122,11 +145,18 @@ struct ProjectsView: View {
                 }
             }
             .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded {
+                currentProjectID = project.id
+            })
 
             projectMenu(project)
         }
         .padding(9)
         .pannotateCard()
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(isCurrent ? PannotateTheme.Colors.accent.opacity(0.72) : .clear, lineWidth: 2)
+        )
     }
 
     private func projectMenu(_ project: Project) -> some View {
@@ -184,6 +214,8 @@ struct ProjectsView: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
             projects.insert(copy, at: 0)
         }
+
+        onProjectCreated(copy)
     }
 
     private func confirmDelete(_ project: Project) {
@@ -195,6 +227,8 @@ struct ProjectsView: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
             projects.removeAll { $0.id == project.id }
         }
+
+        onProjectDeleted(project)
     }
 }
 
@@ -276,7 +310,9 @@ private struct ProjectDetailPlaceholderView: View {
     @State private var showDeleteConfirmation = false
     @State private var showViewClipsPlaceholder = false
     let project: Project
+    let isCurrent: Bool
     var onRename: () -> Void = {}
+    var onSelect: () -> Void = {}
     var onDelete: () -> Void = {}
 
     var body: some View {
@@ -301,6 +337,20 @@ private struct ProjectDetailPlaceholderView: View {
                 .clipShape(Capsule())
 
             VStack(spacing: 12) {
+                if isCurrent {
+                    Label("Current Project", systemImage: "checkmark.circle.fill")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.accent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(PannotateTheme.Colors.accentSoft.opacity(0.58))
+                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                } else {
+                    PrimaryActionButton(title: "Make Current", systemImage: "checkmark.circle") {
+                        onSelect()
+                    }
+                }
+
                 SecondaryActionButton(title: "Rename", systemImage: "pencil") {
                     onRename()
                 }
@@ -352,5 +402,5 @@ private struct ProjectDetailPlaceholderView: View {
 }
 
 #Preview {
-    ProjectsView(projects: .constant(MockPannotateData.projects))
+    ProjectsView(projects: .constant(MockPannotateData.projects), currentProjectID: .constant(MockPannotateData.projects.first?.id))
 }

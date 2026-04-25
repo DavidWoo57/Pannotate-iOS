@@ -31,6 +31,10 @@ struct GeneratedClip: Identifiable {
     let status: ClipStatus
     let thumbnail: ThumbnailStyle
     let image: UIImage?
+    let generationRequestID: UUID?
+    let generationRequestSummary: String?
+    let continuationSourceClipID: UUID?
+    let continuationSourceClipTitle: String?
 
     init(
         id: UUID = UUID(),
@@ -39,7 +43,11 @@ struct GeneratedClip: Identifiable {
         createdAt: String,
         status: ClipStatus,
         thumbnail: ThumbnailStyle,
-        image: UIImage? = nil
+        image: UIImage? = nil,
+        generationRequestID: UUID? = nil,
+        generationRequestSummary: String? = nil,
+        continuationSourceClipID: UUID? = nil,
+        continuationSourceClipTitle: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -48,6 +56,71 @@ struct GeneratedClip: Identifiable {
         self.status = status
         self.thumbnail = thumbnail
         self.image = image
+        self.generationRequestID = generationRequestID
+        self.generationRequestSummary = generationRequestSummary
+        self.continuationSourceClipID = continuationSourceClipID
+        self.continuationSourceClipTitle = continuationSourceClipTitle
+    }
+}
+
+struct GenerationRequest: Identifiable {
+    let id: UUID
+    let createdAt: Date
+    let projectID: UUID?
+    let projectName: String?
+    let sourceImageStatus: String
+    let sourceClipID: UUID?
+    let sourceClipTitle: String?
+    let motionPrompt: String
+    let annotationSummary: String
+    let strokeCount: Int
+    let circleCount: Int
+    let textAnnotations: [String]
+    let generationMode: GenerationMode
+    let mockDuration: String
+    let outputStyle: String
+    let quality: String
+    let startsFromPreviousFrame: Bool
+    let generatedInstruction: String
+
+    init(
+        id: UUID = UUID(),
+        createdAt: Date = Date(),
+        projectID: UUID? = nil,
+        projectName: String? = nil,
+        sourceImageStatus: String,
+        sourceClipID: UUID? = nil,
+        sourceClipTitle: String? = nil,
+        motionPrompt: String,
+        annotationSummary: String,
+        strokeCount: Int,
+        circleCount: Int,
+        textAnnotations: [String],
+        generationMode: GenerationMode,
+        mockDuration: String,
+        outputStyle: String,
+        quality: String,
+        startsFromPreviousFrame: Bool,
+        generatedInstruction: String
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.projectID = projectID
+        self.projectName = projectName
+        self.sourceImageStatus = sourceImageStatus
+        self.sourceClipID = sourceClipID
+        self.sourceClipTitle = sourceClipTitle
+        self.motionPrompt = motionPrompt
+        self.annotationSummary = annotationSummary
+        self.strokeCount = strokeCount
+        self.circleCount = circleCount
+        self.textAnnotations = textAnnotations
+        self.generationMode = generationMode
+        self.mockDuration = mockDuration
+        self.outputStyle = outputStyle
+        self.quality = quality
+        self.startsFromPreviousFrame = startsFromPreviousFrame
+        self.generatedInstruction = generatedInstruction
     }
 }
 
@@ -74,6 +147,13 @@ struct SequenceClip: Identifiable {
         self.continuesFromPreviousFrame = continuesFromPreviousFrame
         self.thumbnail = thumbnail
     }
+}
+
+struct StudioContinuationContext: Identifiable {
+    let id: UUID
+    let title: String
+    let thumbnail: ThumbnailStyle
+    let image: UIImage?
 }
 
 struct ActivityItem: Identifiable {
@@ -116,4 +196,29 @@ enum ThumbnailStyle {
     case ocean
     case forest
     case lights
+}
+
+enum GenerationMode: String, CaseIterable, Identifiable {
+    case newShot
+    case continueFromLastFrame
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .newShot:
+            "New Shot"
+        case .continueFromLastFrame:
+            "Continue from Last Frame"
+        }
+    }
+
+    var requestValue: String {
+        switch self {
+        case .newShot:
+            "new_shot"
+        case .continueFromLastFrame:
+            "continue_from_last_frame"
+        }
+    }
 }

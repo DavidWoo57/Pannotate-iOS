@@ -2,6 +2,9 @@ import SwiftUI
 
 struct OutputsView: View {
     @Binding var clips: [GeneratedClip]
+    let currentProject: Project?
+    var onShowProjects: () -> Void = {}
+    var onContinueClip: (GeneratedClip) -> Void = { _ in }
     var onAddToSequence: (GeneratedClip) -> Bool = { _ in false }
     var onShowSequence: () -> Void = {}
 
@@ -19,21 +22,42 @@ struct OutputsView: View {
 
     var body: some View {
         FixedHeaderPage {
-            PageTitle(title: "Outputs", subtitle: "Your generated clips")
+            PageTitle(title: "Outputs", subtitle: currentProject.map { "Outputs for \($0.title)" } ?? "Select a project first")
         } content: {
-            if let confirmationMessage {
-                Label(confirmationMessage, systemImage: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(PannotateTheme.Colors.success)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-                    .background(PannotateTheme.Colors.success.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
+            if let currentProject {
+                CurrentProjectBanner(prefix: "Outputs for", project: currentProject)
 
-            ForEach(clips) { clip in
-                outputCard(clip)
+                if let confirmationMessage {
+                    Label(confirmationMessage, systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.success)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(PannotateTheme.Colors.success.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                if clips.isEmpty {
+                    Text("No outputs for this project yet. Generate a mock clip in Studio to see it here.")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .background(PannotateTheme.Colors.cardMuted)
+                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                } else {
+                    ForEach(clips) { clip in
+                        outputCard(clip)
+                    }
+                }
+            } else {
+                ProjectRequiredEmptyState(
+                    title: "Select a project first",
+                    message: "Outputs are grouped by the current project. Choose or create a project to view generated clips.",
+                    buttonTitle: "Go to Projects",
+                    action: onShowProjects
+                )
             }
         }
         .sheet(item: $selectedClip) { clip in
@@ -147,7 +171,7 @@ struct OutputsView: View {
 
             HStack(spacing: 12) {
                 Button {
-                    showConfirmation("Continue from last frame")
+                    onContinueClip(clip)
                 } label: {
                     Label("Continue", systemImage: "arrow.clockwise")
                         .font(.headline.weight(.bold))
@@ -243,7 +267,11 @@ struct OutputsView: View {
                 createdAt: clip.createdAt,
                 status: clip.status,
                 thumbnail: clip.thumbnail,
-                image: clip.image
+                image: clip.image,
+                generationRequestID: clip.generationRequestID,
+                generationRequestSummary: clip.generationRequestSummary,
+                continuationSourceClipID: clip.continuationSourceClipID,
+                continuationSourceClipTitle: clip.continuationSourceClipTitle
             )
         }
     }
@@ -306,39 +334,57 @@ private struct ClipPreviewPlaceholderSheet: View {
     @Environment(\.dismiss) private var dismiss
     let clip: GeneratedClip
 
+    private enum Metrics {
+        static let previewHeight: CGFloat = 230
+        static let previewRadius: CGFloat = 26
+    }
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 18) {
-                ZStack {
-                    clipThumbnail(cornerRadius: 26)
+            ScrollView {
+                VStack(spacing: 18) {
+                    previewMedia
 
-                    Image(systemName: clip.status.label == "Queued" ? "clock" : "play.fill")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 78, height: 78)
-                        .background(.ultraThinMaterial.opacity(0.62))
-                        .clipShape(Circle())
+                    Text(clip.title)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Clip Preview Placeholder")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.accent)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Text("Real video playback will be connected later. This keeps the prototype tappable without adding media services.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let generationRequestSummary = clip.generationRequestSummary {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Generation Details")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(PannotateTheme.Colors.accent)
+
+                            Text(generationRequestSummary)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(PannotateTheme.Colors.cardMuted)
+                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+                        )
+                    }
                 }
-                .frame(height: 230)
-
-                Text(clip.title)
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(PannotateTheme.Colors.primaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text("Clip Preview Placeholder")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(PannotateTheme.Colors.accent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text("Real video playback will be connected later. This keeps the prototype tappable without adding media services.")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Spacer()
+                .padding(PannotateTheme.Metrics.pagePadding)
             }
-            .padding(PannotateTheme.Metrics.pagePadding)
             .background(PannotateTheme.Colors.background.ignoresSafeArea())
             .navigationTitle("Clip Preview")
             .navigationBarTitleDisplayMode(.inline)
@@ -353,21 +399,44 @@ private struct ClipPreviewPlaceholderSheet: View {
         }
     }
 
+    private var previewMedia: some View {
+        ZStack {
+            clipThumbnail(cornerRadius: Metrics.previewRadius)
+
+            Image(systemName: clip.status.label == "Queued" ? "clock" : "play.fill")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 78, height: 78)
+                .background(.ultraThinMaterial.opacity(0.62))
+                .clipShape(Circle())
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: Metrics.previewHeight)
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.previewRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Metrics.previewRadius, style: .continuous)
+                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+        )
+    }
+
     private func clipThumbnail(cornerRadius: CGFloat) -> some View {
-        Group {
-            if let image = clip.image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .clipped()
-            } else {
-                MockThumbnail(style: clip.thumbnail, cornerRadius: cornerRadius)
+        GeometryReader { geometry in
+            Group {
+                if let image = clip.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    MockThumbnail(style: clip.thumbnail, cornerRadius: cornerRadius)
+                }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
 #Preview {
-    OutputsView(clips: .constant(MockPannotateData.generatedClips))
+    OutputsView(clips: .constant(MockPannotateData.generatedClips), currentProject: MockPannotateData.projects.first)
 }
