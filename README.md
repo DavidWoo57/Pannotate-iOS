@@ -5,6 +5,16 @@ Spatially guided AI video creation
 
 ---
 
+## Project Website | 项目网站
+
+Website: [pannotate.art](https://pannotate.art)
+
+Pannotate also has an early web prototype that demonstrates the product concept and workflow.
+
+Pannotate 已经有一个早期网页原型，用于展示产品概念和基本工作流。
+
+---
+
 ## Overview | 项目简介
 
 Pannotate is an AI-powered video creation tool that allows users to guide video generation through visual annotations and motion prompts.
