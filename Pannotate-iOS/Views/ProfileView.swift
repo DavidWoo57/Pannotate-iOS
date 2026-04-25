@@ -1,0 +1,277 @@
+import SwiftUI
+
+struct ProfileView: View {
+    private let profile = MockPannotateData.profile
+    private let activity = MockPannotateData.activity
+
+    var body: some View {
+        FixedHeaderPage(bottomPadding: PannotateTheme.Metrics.tabBarContentInset + 12) {
+            HStack {
+                BrandHeader()
+
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                        .frame(width: 46, height: 46)
+                        .background(PannotateTheme.Colors.cardMuted)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(PannotateTheme.Colors.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        } content: {
+            userCard
+
+            statsGrid
+
+            VStack(spacing: 14) {
+                SectionLabel(title: "Recent Activity")
+
+                VStack(spacing: 0) {
+                    ForEach(activity) { item in
+                        activityRow(item)
+                    }
+                }
+                .pannotateCard()
+            }
+
+            settingsRow
+
+            prototypeRows
+        }
+    }
+
+    private var userCard: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 16) {
+                Circle()
+                    .fill(PannotateTheme.brandGradient)
+                    .frame(width: 82, height: 82)
+                    .overlay {
+                        Text("JD")
+                            .font(.title.weight(.bold))
+                            .foregroundStyle(.white)
+                    }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(profile.name)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                    Text(profile.handle)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
+
+                    Text(profile.plan)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.accent)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                        .background(PannotateTheme.Colors.accentSoft.opacity(0.58))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(PannotateTheme.Colors.accent.opacity(0.4), lineWidth: 1))
+                }
+
+                Spacer()
+            }
+
+            Divider()
+                .overlay(PannotateTheme.Colors.border)
+
+            VStack(spacing: 10) {
+                HStack {
+                    Text("Monthly Credits")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
+
+                    Spacer()
+
+                    Text("\(profile.monthlyCreditsUsed) / \(profile.monthlyCreditsTotal)")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.accent)
+                }
+
+                ProgressView(value: Double(profile.monthlyCreditsUsed), total: Double(profile.monthlyCreditsTotal))
+                    .tint(PannotateTheme.Colors.accent)
+                    .background(PannotateTheme.Colors.tertiaryText.opacity(0.35))
+                    .clipShape(Capsule())
+            }
+        }
+        .padding(18)
+        .pannotateCard()
+    }
+
+    private var statsGrid: some View {
+        HStack(spacing: 12) {
+            statCard(title: "Projects", value: profile.projectCount, systemImage: "folder")
+            statCard(title: "Clips", value: profile.clipCount, systemImage: "film")
+            statCard(title: "Exports", value: profile.exportCount, systemImage: "square.stack.3d.up")
+        }
+    }
+
+    private func statCard(title: String, value: Int, systemImage: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.accent)
+
+            Text("\(value)")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 116)
+        .pannotateCard()
+    }
+
+    private func activityRow(_ item: ActivityItem) -> some View {
+        HStack(spacing: 12) {
+            FixedMockThumbnail(
+                style: item.thumbnail,
+                size: CGSize(width: 62, height: 44),
+                cornerRadius: 12
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                Text(item.timeAgo)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+        }
+        .padding(16)
+    }
+
+    private var settingsRow: some View {
+        NavigationLink {
+            SettingsView()
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "gearshape")
+                    .font(.headline)
+                    .foregroundStyle(PannotateTheme.Colors.accent)
+                    .frame(width: 38, height: 38)
+                    .background(PannotateTheme.Colors.accentSoft.opacity(0.5))
+                    .clipShape(Circle())
+
+                Text("Settings")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+            }
+            .padding(16)
+            .pannotateCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var prototypeRows: some View {
+        VStack(spacing: 14) {
+            SectionLabel(title: "Account & Support")
+
+            VStack(spacing: 0) {
+                profileLink(title: "Subscription", subtitle: "Manage Pro Creator plan", systemImage: "creditcard")
+                profileLink(title: "Help", subtitle: "Prototype support placeholder", systemImage: "questionmark.circle")
+                profileLink(title: "Privacy", subtitle: "Data controls placeholder", systemImage: "lock.shield")
+                profileLink(title: "Rate Pannotate", subtitle: "App Store prompt placeholder", systemImage: "star")
+            }
+            .pannotateCard()
+        }
+    }
+
+    private func profileLink(title: String, subtitle: String, systemImage: String) -> some View {
+        NavigationLink {
+            ProfilePlaceholderDetailView(title: title, subtitle: subtitle, systemImage: systemImage)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.headline)
+                    .foregroundStyle(PannotateTheme.Colors.accent)
+                    .frame(width: 38, height: 38)
+                    .background(PannotateTheme.Colors.accentSoft.opacity(0.5))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                    Text(subtitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+            }
+            .padding(16)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ProfilePlaceholderDetailView: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Image(systemName: systemImage)
+                .font(.system(size: 46, weight: .semibold))
+                .foregroundStyle(PannotateTheme.Colors.accent)
+                .frame(width: 104, height: 104)
+                .background(PannotateTheme.Colors.accentSoft.opacity(0.62))
+                .clipShape(Circle())
+
+            Text(title)
+                .font(.largeTitle.weight(.bold))
+                .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+            Text(subtitle)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+
+            Text("This is a simple local prototype screen. Real account, support, payment, and store logic will be connected later.")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                .multilineTextAlignment(.center)
+                .padding(.top, 8)
+
+            Spacer()
+        }
+        .padding(PannotateTheme.Metrics.pagePadding)
+        .frame(maxWidth: .infinity)
+        .background(PannotateTheme.Colors.background.ignoresSafeArea())
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+#Preview {
+    NavigationStack {
+        ProfileView()
+    }
+}
