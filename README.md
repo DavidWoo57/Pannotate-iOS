@@ -308,4 +308,9 @@ David Woo
 
 ## License | 许可证
 
-MIT License
+All rights reserved.  
+版权所有，保留所有权利。
+
+This project is not open-source. Unauthorized copying, redistribution, commercial use, or reuse of the source code is not permitted without written permission.
+
+本项目暂不开源。未经书面许可，不允许复制、再分发、商用或复用本项目源代码。
