@@ -1,4 +1,4 @@
-# Pannotate
+# Pannotate 绘动
 
 Spatially guided AI video creation  
 基于空间标注的 AI 视频生成工具
