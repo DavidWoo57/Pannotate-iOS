@@ -17,11 +17,9 @@ Pannotate 已经有一个早期网页原型，用于展示产品概念和基础�
 
 ## Overview | 项目简介
 
-Pannotate is an AI video creation tool designed around visual guidance.  
-Instead of relying only on long text prompts, users can start from an image, mark the image directly, describe the desired motion, and use those combined inputs to guide AI video generation.
+Pannotate is an AI video creation tool designed around visual guidance. Instead of relying only on long text prompts, users can start from an image, mark the image directly, describe the desired motion, and use those combined inputs to guide AI video generation.
 
-Pannotate 是一个围绕“视觉引导”设计的 AI 视频生成工具。  
-它不只是依赖长文字提示词，而是让用户从一张图片开始，直接在图片上进行标注，再配合动作描述，引导 AI 更准确地生成视频。
+Pannotate 是一个围绕“视觉引导”设计的 AI 视频生成工具。它不只是依赖长文字提示词，而是让用户从一张图片开始，直接在图片上进行标注，再配合动作描述，引导 AI 更准确地生成视频。
 
 The long-term goal is to make image-to-video generation more precise, controllable, and creator-friendly.
 
@@ -31,11 +29,9 @@ The long-term goal is to make image-to-video generation more precise, controllab
 
 ## Core Concept | 核心理念
 
-Most image-to-video tools ask users to describe everything in text.  
-This can be limiting when the user wants to control a specific object, direction, region, or movement.
+Most image-to-video tools ask users to describe everything in text. This can be limiting when the user wants to control a specific object, direction, region, or movement.
 
-大多数图生视频工具都要求用户用文字描述一切。  
-但当用户想控制某个具体对象、方向、区域或动作时，纯文字往往不够直观。
+大多数图生视频工具都要求用户用文字描述一切。但当用户想控制某个具体对象、方向、区域或动作时，纯文字往往不够直观。
 
 Pannotate explores a different workflow:
 
@@ -56,8 +52,7 @@ Pannotate 探索的是另一种工作流：
 5. Generate and organize short video clips  
    生成并整理短视频片段
 
-The intended AI input is not just text.  
-It is a combination of:
+The intended AI input is not just text. It is a combination of:
 
 AI 接收的输入不只是文字，而是以下信息的组合：
 
@@ -232,3 +227,85 @@ Recommended workflow:
 ```bash
 main        # stable branch
 feature/*   # feature branches
+```
+
+Suggested process:
+
+建议开发流程：
+
+1. Pull the latest version from `main`  
+   从 `main` 拉取最新代码
+
+2. Create a new feature branch  
+   创建新的功能分支
+
+3. Make changes locally in Xcode  
+   在本地 Xcode 中开发
+
+4. Commit changes with a clear message  
+   使用清晰的提交信息进行 commit
+
+5. Push the branch to GitHub  
+   推送分支到 GitHub
+
+6. Open a Pull Request  
+   创建 Pull Request
+
+7. Review and merge  
+   Review 后合并
+
+---
+
+## Roadmap | 路线图
+
+Planned next steps include:
+
+后续计划包括：
+
+- Improve Studio annotation tools  
+  优化 Studio 标注工具
+
+- Export annotation data for AI generation  
+  导出可供 AI 使用的标注数据
+
+- Connect a real AI video generation API  
+  接入真实 AI 视频生成 API
+
+- Add persistent project storage  
+  增加项目持久化存储
+
+- Improve clip editing and sequence management  
+  优化视频片段编辑与序列管理
+
+- Add real video preview and export  
+  增加真实视频预览与导出
+
+- Expand iPadOS support later  
+  后续扩展 iPadOS 支持
+
+---
+
+## Product Direction | 产品方向
+
+Pannotate aims to become a creative tool for AI video generation where users can communicate intent visually, not just textually.
+
+Pannotate 希望成为一个让用户不仅通过文字、也能通过视觉标注表达创作意图的 AI 视频生成工具。
+
+The key design principle is:
+
+核心设计原则是：
+
+> Let users show the AI what they mean, directly on the image.  
+> 让用户直接在图片上告诉 AI：他们想让哪里发生什么。
+
+---
+
+## Author | 作者
+
+David Woo
+
+---
+
+## License | 许可证
+
+MIT License
