@@ -11,11 +11,11 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .light:
-            "Light"
+            L10n.string("settings.theme.light")
         case .dark:
-            "Dark"
+            L10n.string("settings.theme.dark")
         case .system:
-            "System"
+            L10n.string("settings.theme.system")
         }
     }
 
@@ -100,11 +100,24 @@ enum PannotateTheme {
     }
 
     enum Metrics {
-        static let pagePadding: CGFloat = 18
-        static let cardRadius: CGFloat = 22
-        static let controlRadius: CGFloat = 16
+        static let pagePadding: CGFloat = 16
+        static let cardRadius: CGFloat = 20
+        static let controlRadius: CGFloat = 14
         static let tabBarContentInset: CGFloat = 36
-        static let sequenceThumbnailSize = CGSize(width: 72, height: 50)
+        static let sequenceThumbnailSize = CGSize(width: 68, height: 46)
+        static let buttonHeight: CGFloat = 48
+    }
+
+    enum Typography {
+        static let pageTitle = Font.largeTitle.weight(.semibold)
+        static let sectionTitle = Font.title3.weight(.semibold)
+        static let cardTitle = Font.headline.weight(.semibold)
+        static let control = Font.headline.weight(.semibold)
+        static let body = Font.body
+        static let bodyEmphasis = Font.body.weight(.medium)
+        static let metadata = Font.subheadline
+        static let metadataEmphasis = Font.subheadline.weight(.medium)
+        static let label = Font.caption.weight(.semibold)
     }
 
     static let brandGradient = LinearGradient(

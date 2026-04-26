@@ -10,63 +10,40 @@ struct SequenceView: View {
     @State private var showRemoveConfirmation = false
     @State private var isExporting = false
     @State private var showExportComplete = false
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
         VStack(spacing: 0) {
             header
 
             if let currentProject {
-                ZStack {
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            CurrentProjectBanner(prefix: "Sequence for", project: currentProject)
-
-                            ForEach(clips) { clip in
-                                VStack(spacing: 6) {
-                                    sequenceRow(clip)
-
-                                    if clip.continuesFromPreviousFrame {
-                                        Label("Continues from previous frame", systemImage: "link")
-                                            .font(.footnote.weight(.semibold))
-                                            .foregroundStyle(PannotateTheme.Colors.accent.opacity(0.74))
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .padding(.leading, 142)
-                                            .padding(.top, -2)
-                                    }
-                                }
-                            }
-
-                            addClipPlaceholder
-                        }
-                        .padding(PannotateTheme.Metrics.pagePadding)
-                        .padding(.bottom, 22)
-                    }
-                }
+                sequenceList(currentProject)
                 .safeAreaInset(edge: .bottom) {
                     actionBar
                 }
             } else {
                 ProjectRequiredEmptyState(
-                    title: "Select a project first",
-                    message: "Sequences are scoped to the current project. Choose or create a project before arranging clips.",
-                    buttonTitle: "Go to Projects",
+                    title: L10n.string("common.select_project_first"),
+                    message: L10n.string("sequence.no_project_message"),
+                    buttonTitle: L10n.string("common.go_to_projects"),
                     action: onShowProjects
                 )
             }
         }
         .pannotatePage()
+        .environment(\.editMode, $editMode)
         .sheet(item: $activeSheet) { sheet in
             SequencePlaceholderSheet(sheet: sheet)
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .alert("Export Complete", isPresented: $showExportComplete) {
-            Button("OK", role: .cancel) {}
+        .alert(L10n.string("sequence.export_complete"), isPresented: $showExportComplete) {
+            Button("common.ok", role: .cancel) {}
         } message: {
-            Text("Your mock sequence export is ready. Real video export will come later.")
+            Text("sequence.export_complete_message")
         }
-        .alert("Remove Clip?", isPresented: $showRemoveConfirmation) {
-            Button("Remove", role: .destructive) {
+        .alert(L10n.string("sequence.remove_clip_question"), isPresented: $showRemoveConfirmation) {
+            Button("common.remove", role: .destructive) {
                 if let clipPendingRemoval {
                     remove(clipPendingRemoval)
                 }
@@ -74,24 +51,42 @@ struct SequenceView: View {
                 clipPendingRemoval = nil
             }
 
-            Button("Cancel", role: .cancel) {
+            Button("common.cancel", role: .cancel) {
                 clipPendingRemoval = nil
             }
         } message: {
-            Text("This removes the clip from the local mock sequence.")
+            Text("sequence.remove_clip_message")
         }
     }
 
     private var header: some View {
-        VStack(spacing: 18) {
+        HStack(alignment: .top, spacing: 12) {
             PageTitle(
-                title: "Sequence",
-                subtitle: currentProject.map { "Sequence for \($0.title) · \(clips.count) clips · \(totalDuration)s total" } ?? "Select a project first"
+                title: L10n.string("tab.sequence"),
+                subtitle: sequenceSubtitle
             )
+
+            if currentProject != nil && clips.count > 1 {
+                Button {
+                    toggleEditMode()
+                } label: {
+                    Text(isEditing ? L10n.string("common.done") : L10n.string("common.edit"))
+                        .font(PannotateTheme.Typography.control)
+                        .foregroundStyle(isEditing ? .white : PannotateTheme.Colors.accent)
+                        .frame(width: 68, height: 40)
+                        .background(isEditing ? PannotateTheme.Colors.accent : PannotateTheme.Colors.cardMuted)
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(isEditing ? .clear : PannotateTheme.Colors.border, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
-        .padding(.top, 14)
-        .padding(.bottom, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
         .frame(maxWidth: .infinity)
         .background(PannotateTheme.Colors.background.opacity(0.96))
         .overlay(alignment: .bottom) {
@@ -101,9 +96,58 @@ struct SequenceView: View {
         }
     }
 
+    private var isEditing: Bool {
+        editMode.isEditing
+    }
+
+    private var sequenceSubtitle: String {
+        guard let currentProject else {
+            return L10n.string("common.select_project_first")
+        }
+
+        return String.localizedStringWithFormat(
+            L10n.string("sequence.subtitle_for_project_format"),
+            currentProject.title,
+            clips.count,
+            totalDuration
+        )
+    }
+
+    private func toggleEditMode() {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+            editMode = isEditing ? .inactive : .active
+        }
+    }
+
+    private func sequenceList(_ currentProject: Project) -> some View {
+        List {
+            CurrentProjectBanner(prefix: L10n.string("sequence.for_project"), project: currentProject)
+                .sequenceListRow()
+
+            if clips.isEmpty {
+                emptySequenceState
+                    .sequenceListRow()
+            } else {
+                ForEach(clips) { clip in
+                    sequenceListItem(clip)
+                        .sequenceListRow()
+                        .moveDisabled(clips.count < 2)
+                }
+                .onMove(perform: moveClips)
+            }
+
+            addClipPlaceholder
+                .sequenceListRow()
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(PannotateTheme.Colors.background)
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: clips.map(\.id))
+    }
+
     private var actionBar: some View {
         HStack(spacing: 12) {
-            SecondaryActionButton(title: "Preview", systemImage: "play") {
+            SecondaryActionButton(title: L10n.string("common.preview"), systemImage: "play") {
                 activeSheet = .preview
             }
 
@@ -118,12 +162,12 @@ struct SequenceView: View {
                         Image(systemName: "square.and.arrow.down")
                     }
 
-                    Text(isExporting ? "Exporting..." : "Export")
+                    Text(isExporting ? L10n.string("sequence.exporting") : L10n.string("common.export"))
                 }
-                .font(.headline.weight(.bold))
+                .font(PannotateTheme.Typography.control)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(height: PannotateTheme.Metrics.buttonHeight)
                 .background(isExporting ? PannotateTheme.Colors.accent.opacity(0.72) : PannotateTheme.Colors.accent)
                 .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
                 .shadow(color: PannotateTheme.Colors.accent.opacity(0.32), radius: 18, y: 8)
@@ -160,32 +204,48 @@ struct SequenceView: View {
         }
     }
 
+    private func sequenceListItem(_ clip: SequenceClip) -> some View {
+        VStack(spacing: 6) {
+            sequenceRow(clip)
+
+            if clip.continuesFromPreviousFrame {
+                Label("sequence.continues_from_previous_frame", systemImage: "link")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(PannotateTheme.Colors.accent.opacity(0.74))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 132)
+                    .padding(.top, -2)
+            }
+        }
+    }
+
     private func sequenceRow(_ clip: SequenceClip) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "circle.grid.3x3.fill")
                 .font(.subheadline)
-                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                .foregroundStyle(isEditing ? PannotateTheme.Colors.accent : PannotateTheme.Colors.tertiaryText)
                 .frame(width: 18)
+                .accessibilityHidden(true)
 
             Text("\(clip.order)")
-                .font(.subheadline.weight(.bold))
+                .font(PannotateTheme.Typography.metadata)
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
                 .frame(width: 40, height: 40)
                 .background(PannotateTheme.Colors.cardMuted)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            FixedClipThumbnail(style: clip.thumbnail, cornerRadius: 16)
+            FixedClipThumbnail(style: clip.thumbnail, image: clip.image, cornerRadius: 14)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(clip.title)
-                    .font(.headline.weight(.bold))
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
                     .lineLimit(2)
                     .minimumScaleFactor(0.88)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(clip.duration)
-                    .font(.subheadline.weight(.semibold))
+                    .font(PannotateTheme.Typography.metadata)
                     .foregroundStyle(PannotateTheme.Colors.tertiaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,8 +253,12 @@ struct SequenceView: View {
 
             sequenceMenu(clip)
         }
-        .padding(14)
+        .padding(12)
         .pannotateCard()
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(isEditing ? PannotateTheme.Colors.accent.opacity(0.24) : .clear, lineWidth: 1)
+        )
     }
 
     private func sequenceMenu(_ clip: SequenceClip) -> some View {
@@ -202,14 +266,14 @@ struct SequenceView: View {
             Button {
                 move(clip, offset: -1)
             } label: {
-                Label("Move Up", systemImage: "arrow.up")
+                Label("sequence.move_up", systemImage: "arrow.up")
             }
             .disabled(isFirst(clip))
 
             Button {
                 move(clip, offset: 1)
             } label: {
-                Label("Move Down", systemImage: "arrow.down")
+                Label("sequence.move_down", systemImage: "arrow.down")
             }
             .disabled(isLast(clip))
 
@@ -217,7 +281,7 @@ struct SequenceView: View {
                 clipPendingRemoval = clip
                 showRemoveConfirmation = true
             } label: {
-                Label("Remove from Sequence", systemImage: "minus.circle")
+                Label("sequence.remove_from_sequence", systemImage: "minus.circle")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -234,15 +298,15 @@ struct SequenceView: View {
         } label: {
             VStack(spacing: 8) {
                 Image(systemName: "plus")
-                    .font(.largeTitle.weight(.light))
+                    .font(.title.weight(.regular))
                     .foregroundStyle(PannotateTheme.Colors.tertiaryText)
 
-                Text("Add clip")
-                    .font(.headline.weight(.semibold))
+                Text("sequence.add_clip")
+                    .font(PannotateTheme.Typography.control)
                     .foregroundStyle(PannotateTheme.Colors.secondaryText)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 96)
+            .frame(height: 88)
             .background(Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
@@ -251,6 +315,29 @@ struct SequenceView: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(isEditing)
+        .opacity(isEditing ? 0.55 : 1)
+    }
+
+    private var emptySequenceState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "square.stack.3d.up.slash")
+                .font(.title.weight(.medium))
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+            Text("sequence.empty_title")
+                .font(PannotateTheme.Typography.cardTitle)
+                .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+            Text("sequence.empty_message")
+                .font(PannotateTheme.Typography.metadata)
+                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(18)
+        .background(PannotateTheme.Colors.cardMuted)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private var totalDuration: Int {
@@ -279,6 +366,13 @@ struct SequenceView: View {
         }
     }
 
+    private func moveClips(from source: IndexSet, to destination: Int) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            clips.move(fromOffsets: source, toOffset: destination)
+            normalizeOrders()
+        }
+    }
+
     private func remove(_ clip: SequenceClip) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
             clips.removeAll { $0.id == clip.id }
@@ -290,13 +384,29 @@ struct SequenceView: View {
         clips = clips.enumerated().map { index, clip in
             SequenceClip(
                 id: clip.id,
+                sourceOutputClipID: clip.sourceOutputClipID,
                 title: clip.title,
                 order: index + 1,
                 duration: clip.duration,
                 continuesFromPreviousFrame: index > 0 && clip.continuesFromPreviousFrame,
-                thumbnail: clip.thumbnail
+                thumbnail: clip.thumbnail,
+                image: clip.image
             )
         }
+    }
+}
+
+private extension View {
+    func sequenceListRow() -> some View {
+        self
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(
+                top: 6,
+                leading: PannotateTheme.Metrics.pagePadding,
+                bottom: 6,
+                trailing: PannotateTheme.Metrics.pagePadding
+            ))
     }
 }
 
@@ -309,9 +419,9 @@ private enum SequenceSheet: String, Identifiable {
     var title: String {
         switch self {
         case .preview:
-            "Sequence Preview"
+            L10n.string("sequence.preview_title")
         case .addClip:
-            "Add Clip"
+            L10n.string("sequence.add_clip")
         }
     }
 
@@ -327,9 +437,9 @@ private enum SequenceSheet: String, Identifiable {
     var message: String {
         switch self {
         case .preview:
-            "This is a mock preview placeholder. Real timeline playback will be added later."
+            L10n.string("sequence.preview_message")
         case .addClip:
-            "Clip selection will be wired to generated outputs later. For now this is a local prototype placeholder."
+            L10n.string("sequence.add_clip_message")
         }
     }
 }
@@ -349,7 +459,7 @@ private struct SequencePlaceholderSheet: View {
                     .clipShape(Circle())
 
                 Text(sheet.title)
-                    .font(.title2.weight(.bold))
+                    .font(.title2.weight(.semibold))
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                 Text(sheet.message)
@@ -365,7 +475,7 @@ private struct SequencePlaceholderSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
+                    Button("common.done") {
                         dismiss()
                     }
                     .fontWeight(.bold)

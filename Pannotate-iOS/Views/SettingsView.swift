@@ -8,18 +8,18 @@ struct SettingsView: View {
     @State private var motionSmoothing = true
 
     private let qualities = [
-        ("Draft", "Fast, 480p"),
-        ("Standard", "720p"),
-        ("High", "1080p")
+        ("Draft", "settings.quality.draft", "settings.quality.draft_subtitle"),
+        ("Standard", "settings.quality.standard", "settings.quality.standard_subtitle"),
+        ("High", "settings.quality.high", "settings.quality.high_subtitle")
     ]
 
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
-                settingsSection("Appearance") {
+                settingsSection(L10n.string("settings.section.appearance")) {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("Theme")
-                            .font(.headline.weight(.bold))
+                        Text("settings.theme")
+                            .font(PannotateTheme.Typography.cardTitle)
                             .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
                         HStack(spacing: 12) {
@@ -39,27 +39,27 @@ struct SettingsView: View {
                     .pannotateCard()
                 }
 
-                settingsSection("Notifications") {
+                settingsSection(L10n.string("settings.notifications")) {
                     toggleRow(
-                        title: "Push Notifications",
-                        subtitle: "Generation complete, exports ready",
+                        title: L10n.string("settings.push_notifications"),
+                        subtitle: L10n.string("settings.push_notifications_subtitle"),
                         systemImage: "bell",
                         isOn: $pushNotificationsEnabled
                     )
                 }
 
-                settingsSection("Generation") {
+                settingsSection(L10n.string("settings.section.generation")) {
                     VStack(spacing: 18) {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Output Quality")
-                                .font(.headline.weight(.bold))
+                            Text("settings.output_quality")
+                                .font(PannotateTheme.Typography.cardTitle)
                                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
                             HStack(spacing: 12) {
                                 ForEach(qualities, id: \.0) { quality in
                                     optionTile(
-                                        title: quality.0,
-                                        subtitle: quality.1,
+                                        title: L10n.string(quality.1),
+                                        subtitle: L10n.string(quality.2),
                                         systemImage: nil,
                                         isSelected: outputQuality == quality.0
                                     ) {
@@ -70,15 +70,15 @@ struct SettingsView: View {
                         }
 
                         toggleRowContent(
-                            title: "Auto-chain Clips",
-                            subtitle: "Continue from last frame automatically",
+                            title: L10n.string("settings.auto_chain_clips"),
+                            subtitle: L10n.string("settings.auto_chain_clips_subtitle"),
                             systemImage: "bolt",
                             isOn: $autoChainClips
                         )
 
                         toggleRowContent(
-                            title: "Motion Smoothing",
-                            subtitle: "Reduce jitter between frames",
+                            title: L10n.string("settings.motion_smoothing"),
+                            subtitle: L10n.string("settings.motion_smoothing_subtitle"),
                             systemImage: "waveform.path",
                             isOn: $motionSmoothing
                         )
@@ -87,20 +87,20 @@ struct SettingsView: View {
                     .pannotateCard()
                 }
 
-                settingsSection("Account") {
+                settingsSection(L10n.string("settings.account")) {
                     VStack(spacing: 0) {
-                        settingsLink(title: "Subscription", systemImage: "creditcard")
-                        settingsLink(title: "Privacy & Data", systemImage: "lock.shield")
-                        settingsLink(title: "Connected Accounts", systemImage: "person.2")
+                        settingsLink(title: L10n.string("settings.subscription"), systemImage: "creditcard")
+                        settingsLink(title: L10n.string("settings.privacy_data"), systemImage: "lock.shield")
+                        settingsLink(title: L10n.string("settings.connected_accounts"), systemImage: "person.2")
                     }
                     .pannotateCard()
                 }
 
-                settingsSection("About") {
+                settingsSection(L10n.string("settings.about")) {
                     VStack(spacing: 0) {
-                        settingsLink(title: "Pannotate", detail: "Version 1.0.0", systemImage: "bolt")
-                        settingsLink(title: "Terms of Service", systemImage: "doc.text")
-                        settingsLink(title: "Privacy Policy", systemImage: "hand.raised")
+                        settingsLink(title: L10n.string("app.name"), detail: L10n.string("settings.version_1"), systemImage: "bolt")
+                        settingsLink(title: L10n.string("settings.terms"), systemImage: "doc.text")
+                        settingsLink(title: L10n.string("settings.privacy_policy"), systemImage: "hand.raised")
                     }
                     .pannotateCard()
                 }
@@ -109,7 +109,7 @@ struct SettingsView: View {
             .padding(.bottom, 48)
         }
         .background(PannotateTheme.Colors.background.ignoresSafeArea())
-        .navigationTitle("Settings")
+        .navigationTitle(L10n.string("settings.title"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(PannotateTheme.Colors.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -146,7 +146,7 @@ struct SettingsView: View {
                 }
 
                 Text(title)
-                    .font(.subheadline.weight(.bold))
+                    .font(PannotateTheme.Typography.metadataEmphasis)
 
                 if let subtitle {
                     Text(subtitle)
@@ -196,11 +196,11 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.headline.weight(.bold))
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                 Text(subtitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(PannotateTheme.Typography.metadata)
                     .foregroundStyle(PannotateTheme.Colors.tertiaryText)
                     .lineLimit(2)
             }
@@ -224,12 +224,12 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.headline.weight(.bold))
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                 if let detail {
                     Text(detail)
-                        .font(.subheadline.weight(.semibold))
+                        .font(PannotateTheme.Typography.metadata)
                         .foregroundStyle(PannotateTheme.Colors.tertiaryText)
                 }
             }

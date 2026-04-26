@@ -22,14 +22,14 @@ struct OutputsView: View {
 
     var body: some View {
         FixedHeaderPage {
-            PageTitle(title: "Outputs", subtitle: currentProject.map { "Outputs for \($0.title)" } ?? "Select a project first")
+            PageTitle(title: L10n.string("tab.outputs"), subtitle: outputsSubtitle)
         } content: {
             if let currentProject {
-                CurrentProjectBanner(prefix: "Outputs for", project: currentProject)
+                CurrentProjectBanner(prefix: L10n.string("outputs.for_project"), project: currentProject)
 
                 if let confirmationMessage {
                     Label(confirmationMessage, systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.bold))
+                        .font(PannotateTheme.Typography.metadataEmphasis)
                         .foregroundStyle(PannotateTheme.Colors.success)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14)
@@ -39,7 +39,7 @@ struct OutputsView: View {
                 }
 
                 if clips.isEmpty {
-                    Text("No outputs for this project yet. Generate a mock clip in Studio to see it here.")
+                    Text("outputs.empty_message")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -53,9 +53,9 @@ struct OutputsView: View {
                 }
             } else {
                 ProjectRequiredEmptyState(
-                    title: "Select a project first",
-                    message: "Outputs are grouped by the current project. Choose or create a project to view generated clips.",
-                    buttonTitle: "Go to Projects",
+                    title: L10n.string("common.select_project_first"),
+                    message: L10n.string("outputs.no_project_message"),
+                    buttonTitle: L10n.string("common.go_to_projects"),
                     action: onShowProjects
                 )
             }
@@ -66,14 +66,14 @@ struct OutputsView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $clipToRename) { clip in
-            ManagementRenameSheet(title: "Rename Clip", placeholder: "Clip name", initialName: clip.title) { newName in
+            ManagementRenameSheet(title: L10n.string("outputs.rename_clip"), placeholder: L10n.string("outputs.clip_name"), initialName: clip.title) { newName in
                 rename(clip, to: newName)
             }
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
-        .alert("Delete Clip?", isPresented: $showDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
+        .alert(L10n.string("outputs.delete_clip_question"), isPresented: $showDeleteConfirmation) {
+            Button("common.delete", role: .destructive) {
                 if let clipPendingDeletion {
                     delete(clipPendingDeletion)
                 }
@@ -81,12 +81,18 @@ struct OutputsView: View {
                 clipPendingDeletion = nil
             }
 
-            Button("Cancel", role: .cancel) {
+            Button("common.cancel", role: .cancel) {
                 clipPendingDeletion = nil
             }
         } message: {
-            Text("This removes the clip from Outputs in this local prototype session.")
+            Text("outputs.delete_clip_message")
         }
+    }
+
+    private var outputsSubtitle: String {
+        currentProject.map {
+            String.localizedStringWithFormat(L10n.string("outputs.subtitle_for_project_format"), $0.title)
+        } ?? L10n.string("common.select_project_first")
     }
 
     private func outputCard(_ clip: GeneratedClip) -> some View {
@@ -111,7 +117,7 @@ struct OutputsView: View {
     private func outputMediaPreview(_ clip: GeneratedClip) -> some View {
         ZStack {
             clipThumbnail(clip, cornerRadius: 0)
-                .overlay(Color.black.opacity(clip.status.label == "Done" ? 0.18 : 0.45))
+                .overlay(Color.black.opacity(isCompleted(clip.status) ? 0.18 : 0.45))
                 .overlay(alignment: .bottom) {
                     LinearGradient(
                         colors: [
@@ -140,11 +146,11 @@ struct OutputsView: View {
                         .scaleEffect(1.55)
 
                     Text("\(progress)%")
-                        .font(.title2.weight(.bold))
+                        .font(.title2.weight(.semibold))
                         .foregroundStyle(.white)
                 }
             } else {
-                Image(systemName: clip.status.label == "Queued" ? "clock" : "play.fill")
+                Image(systemName: outputCenterIcon(for: clip.status))
                     .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(.white.opacity(0.92))
                     .frame(width: 72, height: 72)
@@ -160,12 +166,12 @@ struct OutputsView: View {
     private func outputInfoPanel(_ clip: GeneratedClip) -> some View {
         VStack(alignment: .leading, spacing: 13) {
             Text(clip.title)
-                .font(.headline.weight(.bold))
+                .font(PannotateTheme.Typography.cardTitle)
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
                 .lineLimit(1)
 
             Text("\(clip.duration) · \(clip.createdAt)")
-                .font(.subheadline.weight(.semibold))
+                .font(PannotateTheme.Typography.metadata)
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
                 .lineLimit(1)
 
@@ -173,8 +179,8 @@ struct OutputsView: View {
                 Button {
                     onContinueClip(clip)
                 } label: {
-                    Label("Continue", systemImage: "arrow.clockwise")
-                        .font(.headline.weight(.bold))
+                    Label("common.continue", systemImage: "arrow.clockwise")
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.primaryText)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
@@ -187,7 +193,7 @@ struct OutputsView: View {
                 }
                 .buttonStyle(.plain)
 
-                PrimaryActionButton(title: "Sequence", systemImage: "arrow.right") {
+                PrimaryActionButton(title: L10n.string("tab.sequence"), systemImage: "arrow.right") {
                     addClipToSequence(clip)
                     onShowSequence()
                 }
@@ -223,24 +229,24 @@ struct OutputsView: View {
             Button {
                 clipToRename = clip
             } label: {
-                Label("Rename Clip", systemImage: "pencil")
+                Label("outputs.rename_clip", systemImage: "pencil")
             }
 
             Button {
                 addClipToSequence(clip)
             } label: {
-                Label("Add to Sequence", systemImage: "square.stack.3d.up")
+                Label("outputs.add_to_sequence", systemImage: "square.stack.3d.up")
             }
 
             Button(role: .destructive) {
                 clipPendingDeletion = clip
                 showDeleteConfirmation = true
             } label: {
-                Label("Delete Clip", systemImage: "trash")
+                Label("outputs.delete_clip", systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.headline.weight(.bold))
+                .font(PannotateTheme.Typography.cardTitle)
                 .foregroundStyle(.white)
                 .frame(width: 40, height: 40)
                 .background(.ultraThinMaterial.opacity(0.72))
@@ -251,7 +257,7 @@ struct OutputsView: View {
 
     private func addClipToSequence(_ clip: GeneratedClip) {
         let didAdd = onAddToSequence(clip)
-        showConfirmation(didAdd ? "Added to sequence" : "Already in sequence")
+        showConfirmation(didAdd ? L10n.string("outputs.added_to_sequence") : L10n.string("outputs.already_in_sequence"))
     }
 
     private func rename(_ clip: GeneratedClip, to newName: String) {
@@ -270,6 +276,11 @@ struct OutputsView: View {
                 image: clip.image,
                 generationRequestID: clip.generationRequestID,
                 generationRequestSummary: clip.generationRequestSummary,
+                interpretationMode: clip.interpretationMode,
+                finalVideoPrompt: clip.finalVideoPrompt,
+                originalGeneratedPrompt: clip.originalGeneratedPrompt,
+                annotationCount: clip.annotationCount,
+                generationMode: clip.generationMode,
                 continuationSourceClipID: clip.continuationSourceClipID,
                 continuationSourceClipTitle: clip.continuationSourceClipTitle
             )
@@ -301,7 +312,7 @@ struct OutputsView: View {
 
     private func statusBadge(_ status: ClipStatus) -> some View {
         Label(status.label, systemImage: statusIcon(status))
-            .font(.subheadline.weight(.bold))
+            .font(PannotateTheme.Typography.metadataEmphasis)
             .foregroundStyle(statusColor(status))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -317,6 +328,8 @@ struct OutputsView: View {
             "progress.indicator"
         case .queued:
             "clock"
+        case .failed:
+            "exclamationmark.triangle"
         }
     }
 
@@ -326,7 +339,30 @@ struct OutputsView: View {
             PannotateTheme.Colors.success
         case .processing, .queued:
             PannotateTheme.Colors.accent
+        case .failed:
+            .red
         }
+    }
+
+    private func outputCenterIcon(for status: ClipStatus) -> String {
+        switch status {
+        case .done:
+            "play.fill"
+        case .processing:
+            "progress.indicator"
+        case .queued:
+            "clock"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func isCompleted(_ status: ClipStatus) -> Bool {
+        if case .done = status {
+            return true
+        }
+
+        return false
     }
 }
 
@@ -346,51 +382,32 @@ private struct ClipPreviewPlaceholderSheet: View {
                     previewMedia
 
                     Text(clip.title)
-                        .font(.title2.weight(.bold))
+                        .font(.title2.weight(.semibold))
                         .foregroundStyle(PannotateTheme.Colors.primaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Clip Preview Placeholder")
-                        .font(.headline.weight(.bold))
+                    Text("outputs.clip_preview_placeholder")
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.accent)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text("Real video playback will be connected later. This keeps the prototype tappable without adding media services.")
-                        .font(.subheadline.weight(.semibold))
+                    Text("outputs.clip_preview_note")
+                        .font(PannotateTheme.Typography.metadata)
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let generationRequestSummary = clip.generationRequestSummary {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Generation Details")
-                                .font(.headline.weight(.bold))
-                                .foregroundStyle(PannotateTheme.Colors.accent)
-
-                            Text(generationRequestSummary)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(PannotateTheme.Colors.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .background(PannotateTheme.Colors.cardMuted)
-                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
-                                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
-                        )
-                    }
+                    generationDetails
                 }
                 .padding(PannotateTheme.Metrics.pagePadding)
             }
             .background(PannotateTheme.Colors.background.ignoresSafeArea())
-            .navigationTitle("Clip Preview")
+            .navigationTitle(L10n.string("outputs.clip_preview"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
+                    Button("common.done") {
                         dismiss()
                     }
                     .fontWeight(.bold)
@@ -399,11 +416,110 @@ private struct ClipPreviewPlaceholderSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var generationDetails: some View {
+        if hasGenerationDetails {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("generation.details")
+                    .font(PannotateTheme.Typography.cardTitle)
+                    .foregroundStyle(PannotateTheme.Colors.accent)
+
+                detailRows
+
+                if let finalVideoPrompt = clip.finalVideoPrompt {
+                    detailBlock(title: L10n.string("generation.prompt_used"), text: finalVideoPrompt)
+                }
+
+                if let originalGeneratedPrompt = clip.originalGeneratedPrompt,
+                   originalGeneratedPrompt != clip.finalVideoPrompt {
+                    detailBlock(title: L10n.string("generation.original_generated_prompt"), text: originalGeneratedPrompt)
+                }
+
+                if let generationRequestSummary = clip.generationRequestSummary {
+                    detailBlock(title: L10n.string("generation.request_summary"), text: generationRequestSummary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(PannotateTheme.Colors.cardMuted)
+            .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                    .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+            )
+        }
+    }
+
+    private var hasGenerationDetails: Bool {
+        clip.generationRequestID != nil ||
+            clip.generationRequestSummary != nil ||
+            clip.interpretationMode != nil ||
+            clip.finalVideoPrompt != nil ||
+            clip.originalGeneratedPrompt != nil ||
+            clip.annotationCount != nil ||
+            clip.generationMode != nil ||
+            clip.continuationSourceClipTitle != nil
+    }
+
+    private var detailRows: some View {
+        VStack(spacing: 8) {
+            metadataRow(label: L10n.string("studio.interpretation_mode"), value: clip.interpretationMode?.title ?? L10n.string("common.not_captured"))
+            metadataRow(label: L10n.string("generation.annotation_count"), value: clip.annotationCount.map(String.init) ?? L10n.string("common.not_captured"))
+            metadataRow(label: L10n.string("generation.request_id"), value: clip.generationRequestID.map { String($0.uuidString.prefix(8)) } ?? L10n.string("common.not_captured"))
+            metadataRow(label: L10n.string("generation.context"), value: generationContextText)
+
+            if let sourceClipTitle = clip.continuationSourceClipTitle {
+                metadataRow(label: L10n.string("generation.source_clip"), value: sourceClipTitle)
+            }
+        }
+    }
+
+    private var generationContextText: String {
+        if let generationMode = clip.generationMode {
+            return generationMode.title
+        }
+
+        return clip.continuationSourceClipTitle == nil ? L10n.string("generation.new_shot") : L10n.string("generation.continue_from_last_frame")
+    }
+
+    private func metadataRow(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(label)
+                .font(PannotateTheme.Typography.label)
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                .frame(width: 132, alignment: .leading)
+
+            Text(value)
+                .font(PannotateTheme.Typography.metadata)
+                .foregroundStyle(PannotateTheme.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func detailBlock(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(PannotateTheme.Typography.label)
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+            Text(text)
+                .font(PannotateTheme.Typography.metadata)
+                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var previewMedia: some View {
         ZStack {
             clipThumbnail(cornerRadius: Metrics.previewRadius)
 
-            Image(systemName: clip.status.label == "Queued" ? "clock" : "play.fill")
+            Image(systemName: previewIcon(for: clip.status))
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 78, height: 78)
@@ -434,6 +550,19 @@ private struct ClipPreviewPlaceholderSheet: View {
             .clipped()
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
+    private func previewIcon(for status: ClipStatus) -> String {
+        switch status {
+        case .done:
+            "play.fill"
+        case .processing:
+            "progress.indicator"
+        case .queued:
+            "clock"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        }
     }
 }
 

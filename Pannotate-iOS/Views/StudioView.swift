@@ -16,15 +16,25 @@ struct StudioView: View {
     @State private var annotations: [StudioAnnotation] = []
     @State private var annotationEditorSession: AnnotationEditorSession?
     @State private var isPresentingPromptPreview = false
+    @State private var generateReviewSession: GenerateReviewSession?
+    @State private var isPreparingGenerateReview = false
     @State private var annotationCanvasSize = CGSize(width: 360, height: 224)
     @State private var lastGeneratedInstruction: String?
     @State private var lastGenerationRequest: GenerationRequest?
+    @State private var interpretationMode: AnnotationInterpretationMode = .fast
+    @State private var loadedProjectID: UUID?
+    @State private var isApplyingPersistedState = false
 
     let currentProject: Project?
     var continuationContext: StudioContinuationContext? = nil
+    var persistedState: StudioProjectState? = nil
     var onShowProjects: () -> Void = {}
     var onClearContinuation: () -> Void = {}
     var onGeneratedClip: (GeneratedClip) -> Void = { _ in }
+    var onStudioStateChanged: (StudioProjectState) -> Void = { _ in }
+
+    private let videoGenerationService: VideoGenerationService = MockVideoGenerationService()
+    private let visionInterpretationService: VisionInterpretationService = MockVisionInterpretationService()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,8 +42,8 @@ struct StudioView: View {
 
             if let currentProject {
                 ScrollView {
-                    VStack(spacing: 20) {
-                        CurrentProjectBanner(prefix: "Editing", project: currentProject)
+                    VStack(spacing: 16) {
+                        CurrentProjectBanner(prefix: L10n.string("studio.editing"), project: currentProject)
 
                         if let continuationContext {
                             continuationBanner(continuationContext)
@@ -43,7 +53,7 @@ struct StudioView: View {
 
                         annotationEntryPoint
 
-                        TextField("Describe the motion...", text: $motionPrompt)
+                        TextField(L10n.string("studio.motion_placeholder"), text: $motionPrompt)
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(PannotateTheme.Colors.primaryText)
                             .padding(.horizontal, 16)
@@ -55,6 +65,8 @@ struct StudioView: View {
                                     .stroke(PannotateTheme.Colors.border, lineWidth: 1)
                             )
 
+                        interpretationModeSelector
+
                         promptPreviewButton
 
                         generateButton
@@ -62,15 +74,15 @@ struct StudioView: View {
                         if let successMessage {
                             VStack(alignment: .leading, spacing: 8) {
                                 Label(successMessage, systemImage: "checkmark.circle.fill")
-                                    .font(.subheadline.weight(.bold))
+                                    .font(PannotateTheme.Typography.metadataEmphasis)
                                     .foregroundStyle(PannotateTheme.Colors.success)
 
                                 if lastGeneratedInstruction != nil {
                                     Button {
                                         isPresentingPromptPreview = true
                                     } label: {
-                                        Text("View request used")
-                                            .font(.subheadline.weight(.bold))
+                                        Text("studio.view_request_used")
+                                            .font(PannotateTheme.Typography.metadataEmphasis)
                                             .foregroundStyle(PannotateTheme.Colors.accent)
                                     }
                                     .buttonStyle(.plain)
@@ -82,20 +94,20 @@ struct StudioView: View {
 
                         if let imageSelectionMessage {
                             Label(imageSelectionMessage, systemImage: "exclamationmark.triangle.fill")
-                                .font(.subheadline.weight(.bold))
+                                .font(PannotateTheme.Typography.metadataEmphasis)
                                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .padding(PannotateTheme.Metrics.pagePadding)
-                    .padding(.top, 50)
+                    .padding(.top, 12)
                     .padding(.bottom, PannotateTheme.Metrics.tabBarContentInset)
                 }
             } else {
                 ProjectRequiredEmptyState(
-                    title: "Select or create a project first",
-                    message: "Studio tools are scoped to the current project. Choose a project before selecting images, annotating, or generating mock clips.",
-                    buttonTitle: "Go to Projects",
+                    title: L10n.string("studio.select_or_create_project_first"),
+                    message: L10n.string("studio.no_project_message"),
+                    buttonTitle: L10n.string("common.go_to_projects"),
                     action: onShowProjects
                 )
             }
@@ -105,10 +117,21 @@ struct StudioView: View {
             loadSelectedPhoto(newItem)
         }
         .onAppear {
+            applyPersistedStateForCurrentProject(force: false)
+            applyContinuationContextIfNeeded()
+        }
+        .onChange(of: currentProject?.id) { _, _ in
+            applyPersistedStateForCurrentProject(force: true)
             applyContinuationContextIfNeeded()
         }
         .onChange(of: continuationContext?.id) { _, _ in
             applyContinuationContextIfNeeded()
+        }
+        .onChange(of: motionPrompt) { _, _ in
+            persistStudioState()
+        }
+        .onChange(of: interpretationMode) { _, _ in
+            persistStudioState()
         }
         .fullScreenCover(item: $annotationEditorSession) { session in
             AnnotationEditorView(
@@ -124,6 +147,7 @@ struct StudioView: View {
                     successMessage = nil
                 }
 
+                persistStudioState()
                 annotationEditorSession = nil
             }
         }
@@ -143,6 +167,7 @@ struct StudioView: View {
                 if session.exitsContinuationOnConfirm {
                     onClearContinuation()
                 }
+                persistStudioState()
                 activeImageAdjustment = nil
             } onCancel: {
                 activeImageAdjustment = nil
@@ -153,23 +178,31 @@ struct StudioView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: $generateReviewSession) { session in
+            GenerateReviewSheet(session: session) { editedFinalPrompt in
+                generateReviewSession = nil
+                startMockGeneration(from: session, editedFinalPrompt: editedFinalPrompt)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var generateButton: some View {
         Button {
-            generateMockVideo()
+            prepareGenerateReview()
         } label: {
             HStack(spacing: 10) {
-                if isGenerating {
+                if isGenerating || isPreparingGenerateReview {
                     ProgressView()
                         .tint(.white)
                 } else {
                     Image(systemName: "sparkles")
                 }
 
-                Text(isGenerating ? "Generating..." : "Generate Video")
+                Text(generateButtonTitle)
             }
-            .font(.headline.weight(.bold))
+            .font(PannotateTheme.Typography.cardTitle)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
@@ -178,9 +211,18 @@ struct StudioView: View {
             .shadow(color: hasRequiredInputs ? PannotateTheme.Colors.accent.opacity(0.32) : .clear, radius: 18, y: 8)
         }
         .buttonStyle(.plain)
-        .disabled(!hasRequiredInputs || isGenerating)
+        .disabled(!hasRequiredInputs || isGenerating || isPreparingGenerateReview)
         .animation(.easeInOut(duration: 0.2), value: isGenerating)
+        .animation(.easeInOut(duration: 0.2), value: isPreparingGenerateReview)
         .animation(.easeInOut(duration: 0.2), value: hasRequiredInputs)
+    }
+
+    private var generateButtonTitle: String {
+        if isPreparingGenerateReview {
+            return L10n.string("studio.preparing")
+        }
+
+        return isGenerating ? L10n.string("studio.generating") : L10n.string("studio.generate_video")
     }
 
     private var hasRequiredInputs: Bool {
@@ -196,46 +238,85 @@ struct StudioView: View {
     }
 
     private var generateButtonColor: Color {
-        if isGenerating {
+        if isGenerating || isPreparingGenerateReview {
             return PannotateTheme.Colors.accent.opacity(0.72)
         }
 
         return hasRequiredInputs ? PannotateTheme.Colors.accent : PannotateTheme.Colors.tertiaryText.opacity(0.52)
     }
 
-    private func generateMockVideo() {
+    private func prepareGenerateReview() {
         guard currentProject != nil, hasCanvasSource else { return }
 
         let request = currentGenerationRequest
-        let shouldClearContinuationAfterGeneration = continuationContext != nil
+        let pipelineResult = currentPromptPipelineResult
         successMessage = nil
-        lastGeneratedInstruction = request.generatedInstruction
         lastGenerationRequest = request
-        isGenerating = true
+        isPreparingGenerateReview = true
 
         Task {
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            let originalFinalPrompt = await finalVideoPrompt(for: pipelineResult)
 
             await MainActor.run {
-                let clip = GeneratedClip(
+                generateReviewSession = GenerateReviewSession(
+                    request: request,
+                    pipelineResult: pipelineResult,
+                    originalFinalPrompt: originalFinalPrompt,
                     title: generatedClipTitle,
-                    duration: "4s",
-                    createdAt: "Just now",
-                    status: .done,
                     thumbnail: selectedMockThumbnail ?? .city,
                     image: selectedImage,
-                    generationRequestID: request.id,
-                    generationRequestSummary: generationRequestSummary(for: request),
                     continuationSourceClipID: continuationContext?.id,
                     continuationSourceClipTitle: continuationContext?.title
                 )
+                isPreparingGenerateReview = false
+            }
+        }
+    }
 
+    private func startMockGeneration(from session: GenerateReviewSession, editedFinalPrompt: String) {
+        guard currentProject != nil, hasCanvasSource else { return }
+
+        let finalPrompt = editedFinalPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? session.originalFinalPrompt
+            : editedFinalPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shouldClearContinuationAfterGeneration = continuationContext != nil
+        lastGeneratedInstruction = finalPrompt
+        lastGenerationRequest = session.request
+        isGenerating = true
+
+        Task {
+            let submission = VideoGenerationSubmission(
+                request: session.request,
+                pipelineResult: session.pipelineResult,
+                title: session.title,
+                duration: session.request.mockDuration,
+                thumbnail: session.thumbnail,
+                image: session.image,
+                continuationSourceClipID: session.continuationSourceClipID,
+                continuationSourceClipTitle: session.continuationSourceClipTitle,
+                finalVideoPrompt: finalPrompt,
+                originalGeneratedPrompt: session.originalFinalPrompt
+            )
+            var job = await videoGenerationService.submitGeneration(submission)
+            await MainActor.run {
+                onGeneratedClip(videoGenerationService.outputClip(for: job, submission: submission, status: job.status))
+            }
+
+            for step in 0...2 {
+                let status = await videoGenerationService.status(for: job, step: step)
+                job.status = status
+
+                await MainActor.run {
+                    onGeneratedClip(videoGenerationService.outputClip(for: job, submission: submission, status: status))
+                }
+            }
+
+            await MainActor.run {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     isGenerating = false
-                    successMessage = "Mock clip generated"
+                    successMessage = L10n.string("studio.mock_clip_generated")
                 }
 
-                onGeneratedClip(clip)
                 if shouldClearContinuationAfterGeneration {
                     onClearContinuation()
                     selectedImage = nil
@@ -243,9 +324,22 @@ struct StudioView: View {
                     imageScale = 1
                     imageOffset = .zero
                     clearAnnotations()
+                    persistStudioState()
                 }
             }
         }
+    }
+
+    private func finalVideoPrompt(for pipelineResult: PromptPipelineResult) async -> String {
+        guard pipelineResult.interpretationMode == .smart else {
+            return pipelineResult.fastPrompt
+        }
+
+        let interpretation = await visionInterpretationService.interpret(
+            payload: pipelineResult.smartPayload,
+            simulatedPrompt: pipelineResult.smartMockResult
+        )
+        return interpretation.refinedVideoPrompt
     }
 
     private var generatedClipTitle: String {
@@ -256,18 +350,59 @@ struct StudioView: View {
         let prompt = motionPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if prompt.count <= 32 {
-            return prompt.isEmpty ? "Studio Mock Clip" : prompt
+            return prompt.isEmpty ? L10n.string("studio.mock_clip_title") : prompt
         }
 
         return "\(prompt.prefix(32))..."
+    }
+
+    private var interpretationModeSelector: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label("studio.interpretation_mode", systemImage: "wand.and.stars")
+                    .font(PannotateTheme.Typography.cardTitle)
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                Spacer()
+            }
+
+            Picker(L10n.string("studio.interpretation_mode"), selection: $interpretationMode) {
+                ForEach(AnnotationInterpretationMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Text(interpretationModeHelpText)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(PannotateTheme.Colors.cardMuted)
+        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+        )
+    }
+
+    private var interpretationModeHelpText: String {
+        switch interpretationMode {
+        case .fast:
+            L10n.string("studio.fast_help")
+        case .smart:
+            L10n.string("studio.smart_help")
+        }
     }
 
     private var promptPreviewButton: some View {
         Button {
             isPresentingPromptPreview = true
         } label: {
-            Label("Preview Request", systemImage: "doc.text.magnifyingglass")
-                .font(.headline.weight(.bold))
+            Label("studio.preview_request", systemImage: "doc.text.magnifyingglass")
+                .font(PannotateTheme.Typography.cardTitle)
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
@@ -291,7 +426,7 @@ struct StudioView: View {
                 guard let data = try await item.loadTransferable(type: Data.self),
                       let image = UIImage(data: data) else {
                     await MainActor.run {
-                        imageSelectionMessage = "Could not load that photo"
+                        imageSelectionMessage = L10n.string("studio.photo_load_failed")
                     }
                     return
                 }
@@ -301,7 +436,7 @@ struct StudioView: View {
                 }
             } catch {
                 await MainActor.run {
-                    imageSelectionMessage = "Photo selection was cancelled or unavailable"
+                    imageSelectionMessage = L10n.string("studio.photo_selection_unavailable")
                 }
             }
         }
@@ -309,14 +444,14 @@ struct StudioView: View {
 
     private var studioHeader: some View {
         HStack {
-            Text("Studio")
-                .font(.title2.weight(.bold))
+            Text("tab.studio")
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
 
             Spacer()
 
             Image(systemName: "ellipsis")
-                .font(.title2.weight(.bold))
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
         }
         .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
@@ -343,14 +478,14 @@ struct StudioView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Continuing from")
-                    .font(.caption.weight(.bold))
+                Text("studio.continuing_from")
+                    .font(PannotateTheme.Typography.label)
                     .tracking(1.2)
                     .textCase(.uppercase)
                     .foregroundStyle(PannotateTheme.Colors.accent)
 
                 Text(context.title)
-                    .font(.headline.weight(.bold))
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
                     .lineLimit(1)
             }
@@ -361,7 +496,7 @@ struct StudioView: View {
                 exitContinuationMode()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.headline.weight(.bold))
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.secondaryText)
                     .frame(width: 36, height: 36)
                     .background(PannotateTheme.Colors.cardMuted)
@@ -394,13 +529,13 @@ struct StudioView: View {
                                 exitsContinuationOnConfirm: false
                             )
                         } label: {
-                            canvasOverlayLabel("Adjust", systemImage: "crop")
+                            canvasOverlayLabel(L10n.string("studio.adjust"), systemImage: "crop")
                         }
                         .buttonStyle(.plain)
                     }
 
                     PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                        canvasOverlayLabel("Change", systemImage: "photo")
+                        canvasOverlayLabel(L10n.string("studio.change"), systemImage: "photo")
                     }
                     .buttonStyle(.plain)
                 }
@@ -413,12 +548,12 @@ struct StudioView: View {
                             .font(.system(size: 42, weight: .semibold))
                             .foregroundStyle(PannotateTheme.Colors.accent)
 
-                        Text("Select an Image")
-                            .font(.title3.weight(.bold))
+                        Text("studio.select_image")
+                            .font(.title3.weight(.semibold))
                             .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-                        Text("Choose a photo to start guiding motion")
-                            .font(.subheadline.weight(.semibold))
+                        Text("studio.choose_photo_hint")
+                            .font(PannotateTheme.Typography.metadata)
                             .foregroundStyle(PannotateTheme.Colors.secondaryText)
                     }
                     .frame(maxWidth: .infinity)
@@ -473,7 +608,7 @@ struct StudioView: View {
 
     private func canvasOverlayLabel(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
-            .font(.caption.weight(.bold))
+            .font(PannotateTheme.Typography.label)
             .foregroundStyle(.white)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -485,12 +620,12 @@ struct StudioView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Annotations")
-                        .font(.headline.weight(.bold))
+                    Text("studio.annotations")
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                     Text(annotationCountSummary)
-                        .font(.subheadline.weight(.semibold))
+                        .font(PannotateTheme.Typography.metadata)
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
                 }
 
@@ -500,8 +635,8 @@ struct StudioView: View {
             Button {
                 openAnnotationEditor()
             } label: {
-                Label(hasCanvasSource ? "Edit Annotations" : "Select Image First", systemImage: "pencil.and.outline")
-                    .font(.headline.weight(.bold))
+                Label(hasCanvasSource ? L10n.string("studio.edit_annotations") : L10n.string("studio.select_image_first"), systemImage: "pencil.and.outline")
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(hasCanvasSource ? PannotateTheme.Colors.accent : PannotateTheme.Colors.tertiaryText)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
@@ -526,10 +661,15 @@ struct StudioView: View {
         let textCount = annotations.compactMap(\.text).count
 
         if annotations.isEmpty {
-            return "No annotations yet. Open the full-screen editor to draw, circle, label, or erase."
+            return L10n.string("studio.no_annotations_summary")
         }
 
-        return "\(strokeCount) strokes · \(circleCount) circles · \(textCount) text labels"
+        return String.localizedStringWithFormat(
+            L10n.string("studio.annotation_count_format"),
+            strokeCount,
+            circleCount,
+            textCount
+        )
     }
 
     private func openAnnotationEditor() {
@@ -545,8 +685,17 @@ struct StudioView: View {
     private var annotationOverlay: some View {
         AnnotationOverlayView(
             annotations: annotations,
-            baseSize: annotationCanvasSize
+            baseSize: annotationCanvasSize,
+            renderAspectRatio: canvasSourceAspectRatio
         )
+    }
+
+    private var canvasSourceAspectRatio: CGFloat? {
+        if let selectedImage {
+            return selectedImage.size.width / max(selectedImage.size.height, 1)
+        }
+
+        return nil
     }
 
     private func clearAnnotations() {
@@ -556,6 +705,7 @@ struct StudioView: View {
     private func applyContinuationContextIfNeeded() {
         guard let continuationContext else { return }
 
+        isApplyingPersistedState = true
         selectedImage = continuationContext.image
         selectedMockThumbnail = continuationContext.image == nil ? continuationContext.thumbnail : nil
         imageScale = 1
@@ -563,6 +713,8 @@ struct StudioView: View {
         annotations.removeAll()
         successMessage = nil
         imageSelectionMessage = nil
+        isApplyingPersistedState = false
+        persistStudioState()
     }
 
     private func exitContinuationMode() {
@@ -573,6 +725,46 @@ struct StudioView: View {
         imageOffset = .zero
         annotations.removeAll()
         successMessage = nil
+        persistStudioState()
+    }
+
+    private func applyPersistedStateForCurrentProject(force: Bool) {
+        guard let projectID = currentProject?.id else {
+            loadedProjectID = nil
+            return
+        }
+
+        guard force || loadedProjectID != projectID else { return }
+        loadedProjectID = projectID
+
+        isApplyingPersistedState = true
+        let state = persistedState ?? StudioProjectState()
+        motionPrompt = state.motionPrompt
+        interpretationMode = state.interpretationMode
+        annotations = state.annotations
+        selectedMockThumbnail = state.selectedMockThumbnail
+        selectedImage = state.selectedImageData.flatMap(UIImage.init(data:))
+        imageScale = state.imageScale
+        imageOffset = state.imageOffset
+        successMessage = nil
+        imageSelectionMessage = nil
+        isApplyingPersistedState = false
+    }
+
+    private func persistStudioState() {
+        guard currentProject != nil, isApplyingPersistedState == false else { return }
+
+        onStudioStateChanged(
+            StudioProjectState(
+                motionPrompt: motionPrompt,
+                interpretationMode: interpretationMode,
+                annotations: annotations,
+                selectedMockThumbnail: selectedMockThumbnail,
+                selectedImageData: selectedImage?.jpegData(compressionQuality: 0.82),
+                imageScale: imageScale,
+                imageOffset: imageOffset
+            )
+        )
     }
 
     private func distance(from first: CGPoint, to second: CGPoint) -> CGFloat {
@@ -580,7 +772,26 @@ struct StudioView: View {
     }
 
     private var promptPreview: StudioPromptPreview {
-        StudioPromptPreview(request: currentGenerationRequest)
+        StudioPromptPreview(request: currentGenerationRequest, pipelineResult: currentPromptPipelineResult)
+    }
+
+    private var currentPromptPipelineResult: PromptPipelineResult {
+        let annotationSummary = AnnotationIntentBuilder.buildSummary(
+            from: annotations,
+            canvasSize: annotationCanvasSize
+        )
+
+        let context = VideoPromptBuildContext(
+            interpretationMode: interpretationMode,
+            userMotionPrompt: motionPrompt,
+            projectName: currentProject?.title,
+            generationMode: activeGenerationMode,
+            continuationSourceClipTitle: continuationContext?.title,
+            sourceImageStatus: sourceImageStatus,
+            annotationSummary: annotationSummary
+        )
+
+        return VideoPromptBuilder.build(context: context)
     }
 
     private var currentGenerationRequest: GenerationRequest {
@@ -591,15 +802,9 @@ struct StudioView: View {
         let textDetails = texts.map { text in
             "\"\(text.text)\" near \(positionLabel(for: text.position))"
         }
+        let pipelineResult = currentPromptPipelineResult
 
         let annotationSummary = annotationSummaryText(
-            strokeCount: strokes.count,
-            circleCount: circles.count,
-            textAnnotations: textDetails
-        )
-
-        let generatedInstruction = generatedInstructionText(
-            prompt: trimmedPrompt,
             strokeCount: strokes.count,
             circleCount: circles.count,
             textAnnotations: textDetails
@@ -621,19 +826,8 @@ struct StudioView: View {
             outputStyle: "Cinematic creator prototype",
             quality: "Mock preview quality",
             startsFromPreviousFrame: continuationContext != nil,
-            generatedInstruction: generatedInstruction
+            generatedInstruction: pipelineResult.finalVideoPrompt
         )
-    }
-
-    private func generationRequestSummary(for request: GenerationRequest) -> String {
-        """
-        Request \(request.id.uuidString.prefix(8)) · \(request.generationMode.title)
-        Project: \(request.projectName ?? "No project")
-        Source clip: \(request.sourceClipTitle ?? "None")
-        Prompt: \(request.motionPrompt)
-        Annotations: \(request.strokeCount) strokes, \(request.circleCount) circles, \(request.textAnnotations.count) text labels
-        Duration: \(request.mockDuration) · Quality: \(request.quality)
-        """
     }
 
     private var sourceImageStatus: String {
@@ -662,20 +856,6 @@ struct StudioView: View {
         }
 
         return lines.joined(separator: "\n")
-    }
-
-    private func generatedInstructionText(prompt: String, strokeCount: Int, circleCount: Int, textAnnotations: [String]) -> String {
-        let promptText = prompt.isEmpty ? "No motion prompt has been provided yet." : "The user's motion prompt is: \"\(prompt)\"."
-        let imageText = hasCanvasSource ? "The user selected an image and added visual annotations." : "The user has not selected an image yet."
-        let modeText: String
-        if let continuationContext {
-            modeText = "This request should continue from the last frame of the output clip \"\(continuationContext.title)\" conceptually; no real last-frame extraction is available yet."
-        } else {
-            modeText = "This request should create a new shot."
-        }
-        let textAnnotationSentence = textAnnotations.isEmpty ? "" : " Text annotations include: \(textAnnotations.joined(separator: "; "))."
-
-        return "\(imageText) \(modeText) Use the annotations to identify the intended subject and motion. \(promptText) There are \(circleCount) circles or ellipses, \(textAnnotations.count) text labels, and \(strokeCount) drawing strokes on the image.\(textAnnotationSentence) Treat these annotations as guidance for what should move, what should be emphasized, or which subject the future video generation model should follow."
     }
 
     private func positionLabel(for point: CGPoint) -> String {
@@ -790,17 +970,17 @@ private struct AnnotationEditorView: View {
             }
             .padding(PannotateTheme.Metrics.pagePadding)
             .background(PannotateTheme.Colors.background.ignoresSafeArea())
-            .navigationTitle("Annotation Editor")
+            .navigationTitle(L10n.string("annotation.editor.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("common.cancel") {
                         dismiss()
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
+                    Button("common.done") {
                         onDone(draftAnnotations)
                     }
                     .fontWeight(.bold)
@@ -808,7 +988,7 @@ private struct AnnotationEditorView: View {
             }
         }
         .sheet(isPresented: $isPresentingTextAnnotation) {
-            ManagementRenameSheet(title: "Add Text", placeholder: "Annotation text", initialName: "") { text in
+            ManagementRenameSheet(title: L10n.string("annotation.add_text"), placeholder: L10n.string("annotation.text_placeholder"), initialName: "") { text in
                 addTextAnnotation(text)
             }
             .presentationDetents([.medium])
@@ -831,6 +1011,7 @@ private struct AnnotationEditorView: View {
                     AnnotationOverlayView(
                         annotations: draftAnnotations,
                         baseSize: baseCanvasSize,
+                        renderAspectRatio: canvasAspectRatio,
                         activeStroke: activeStroke,
                         activeCircle: activeCircle
                     )
@@ -843,8 +1024,8 @@ private struct AnnotationEditorView: View {
                 .contentShape(Rectangle())
                 .gesture(annotationGesture(in: CGSize(width: width, height: canvasHeight)))
                 .overlay(alignment: .topLeading) {
-                    Label(selectedTool, systemImage: selectedToolIcon)
-                        .font(.caption.weight(.bold))
+                    Label(toolTitle(selectedTool), systemImage: selectedToolIcon)
+                        .font(PannotateTheme.Typography.label)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
@@ -874,10 +1055,10 @@ private struct AnnotationEditorView: View {
                     } label: {
                         VStack(spacing: 5) {
                             Image(systemName: tool.1)
-                                .font(.headline.weight(.bold))
+                                .font(PannotateTheme.Typography.cardTitle)
 
-                            Text(tool.0)
-                                .font(.caption.weight(.bold))
+                            Text(toolTitle(tool.0))
+                                .font(PannotateTheme.Typography.label)
                         }
                         .foregroundStyle(isSelected ? PannotateTheme.Colors.accent : PannotateTheme.Colors.secondaryText)
                         .frame(maxWidth: .infinity)
@@ -897,8 +1078,8 @@ private struct AnnotationEditorView: View {
                 Button {
                     undoLastAnnotation()
                 } label: {
-                    Label("Undo", systemImage: "arrow.uturn.backward")
-                        .font(.subheadline.weight(.bold))
+                    Label("common.undo", systemImage: "arrow.uturn.backward")
+                        .font(PannotateTheme.Typography.metadataEmphasis)
                         .foregroundStyle(canUndoAnnotations ? PannotateTheme.Colors.secondaryText : PannotateTheme.Colors.tertiaryText.opacity(0.7))
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
@@ -913,8 +1094,8 @@ private struct AnnotationEditorView: View {
                         clearAnnotations()
                     }
                 } label: {
-                    Label("Clear", systemImage: "eraser")
-                        .font(.subheadline.weight(.bold))
+                    Label("common.clear", systemImage: "eraser")
+                        .font(PannotateTheme.Typography.metadataEmphasis)
                         .foregroundStyle(canUndoAnnotations ? .red : PannotateTheme.Colors.tertiaryText.opacity(0.7))
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
@@ -933,6 +1114,21 @@ private struct AnnotationEditorView: View {
 
     private var selectedToolIcon: String {
         tools.first(where: { $0.0 == selectedTool })?.1 ?? "hand.draw"
+    }
+
+    private func toolTitle(_ tool: String) -> String {
+        switch tool {
+        case "Draw":
+            L10n.string("annotation.tool.draw")
+        case "Circle":
+            L10n.string("annotation.tool.circle")
+        case "Text":
+            L10n.string("annotation.tool.text")
+        case "Eraser":
+            L10n.string("annotation.tool.eraser")
+        default:
+            L10n.string("annotation.tool.pan")
+        }
     }
 
     private var canvasAspectRatio: CGFloat {
@@ -960,15 +1156,15 @@ private struct AnnotationEditorView: View {
     private var selectedToolHint: String {
         switch selectedTool {
         case "Draw":
-            return "Drag on the image to sketch guidance strokes."
+            return L10n.string("annotation.draw_hint")
         case "Circle":
-            return "Drag to draw an ellipse around the subject or area to emphasize."
+            return L10n.string("annotation.circle_hint")
         case "Text":
-            return "Tap to add a label, or drag an existing label to reposition it."
+            return L10n.string("annotation.text_hint")
         case "Eraser":
-            return "Tap or drag over an annotation to remove it."
+            return L10n.string("annotation.eraser_hint")
         default:
-            return "Pan is a safe mode. Existing text labels can still be repositioned."
+            return L10n.string("annotation.pan_hint")
         }
     }
 
@@ -1188,22 +1384,25 @@ private struct AnnotationEditorView: View {
 private struct AnnotationOverlayView: View {
     let annotations: [StudioAnnotation]
     let baseSize: CGSize
+    var renderAspectRatio: CGFloat?
     var activeStroke: AnnotationStroke?
     var activeCircle: AnnotationCircle?
 
     var body: some View {
         GeometryReader { geometry in
+            let annotationRect = annotationRenderRect(in: geometry.size)
+
             ZStack {
                 ForEach(annotations) { annotation in
-                    annotationView(annotation, displaySize: geometry.size)
+                    annotationView(annotation, renderRect: annotationRect)
                 }
 
                 if let activeStroke {
-                    strokeView(activeStroke, displaySize: geometry.size)
+                    strokeView(activeStroke, renderRect: annotationRect)
                 }
 
                 if let activeCircle {
-                    circleView(activeCircle, displaySize: geometry.size)
+                    circleView(activeCircle, renderRect: annotationRect)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -1212,32 +1411,32 @@ private struct AnnotationOverlayView: View {
     }
 
     @ViewBuilder
-    private func annotationView(_ annotation: StudioAnnotation, displaySize: CGSize) -> some View {
+    private func annotationView(_ annotation: StudioAnnotation, renderRect: CGRect) -> some View {
         switch annotation {
         case .stroke(let stroke):
-            strokeView(stroke, displaySize: displaySize)
+            strokeView(stroke, renderRect: renderRect)
         case .circle(let circle):
-            circleView(circle, displaySize: displaySize)
+            circleView(circle, renderRect: renderRect)
         case .text(let text):
-            textView(text, displaySize: displaySize)
+            textView(text, renderRect: renderRect)
         }
     }
 
-    private func strokeView(_ stroke: AnnotationStroke, displaySize: CGSize) -> some View {
+    private func strokeView(_ stroke: AnnotationStroke, renderRect: CGRect) -> some View {
         Path { path in
             guard let firstPoint = stroke.points.first else { return }
 
-            path.move(to: displayPoint(for: firstPoint, in: displaySize))
+            path.move(to: displayPoint(for: firstPoint, in: renderRect))
 
             for point in stroke.points.dropFirst() {
-                path.addLine(to: displayPoint(for: point, in: displaySize))
+                path.addLine(to: displayPoint(for: point, in: renderRect))
             }
         }
         .stroke(PannotateTheme.Colors.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
     }
 
-    private func circleView(_ circle: AnnotationCircle, displaySize: CGSize) -> some View {
-        let rect = displayRect(for: circle.rect, in: displaySize)
+    private func circleView(_ circle: AnnotationCircle, renderRect: CGRect) -> some View {
+        let rect = displayRect(for: circle.rect, in: renderRect)
 
         return Ellipse()
             .stroke(PannotateTheme.Colors.accent, lineWidth: 4)
@@ -1245,7 +1444,7 @@ private struct AnnotationOverlayView: View {
             .position(x: rect.midX, y: rect.midY)
     }
 
-    private func textView(_ text: AnnotationText, displaySize: CGSize) -> some View {
+    private func textView(_ text: AnnotationText, renderRect: CGRect) -> some View {
         Text(text.text)
             .font(.headline.weight(.heavy))
             .foregroundStyle(PannotateTheme.Colors.primaryText)
@@ -1257,22 +1456,52 @@ private struct AnnotationOverlayView: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(Color.white.opacity(0.62), lineWidth: 1)
             )
-            .position(displayPoint(for: text.position, in: displaySize))
+            .position(displayPoint(for: text.position, in: renderRect))
     }
 
-    private func displayPoint(for point: CGPoint, in displaySize: CGSize) -> CGPoint {
+    private func displayPoint(for point: CGPoint, in renderRect: CGRect) -> CGPoint {
         CGPoint(
-            x: point.x * displaySize.width / max(baseSize.width, 1),
-            y: point.y * displaySize.height / max(baseSize.height, 1)
+            x: renderRect.minX + point.x * renderRect.width / max(baseSize.width, 1),
+            y: renderRect.minY + point.y * renderRect.height / max(baseSize.height, 1)
         )
     }
 
-    private func displayRect(for rect: CGRect, in displaySize: CGSize) -> CGRect {
+    private func displayRect(for rect: CGRect, in renderRect: CGRect) -> CGRect {
         CGRect(
-            x: rect.minX * displaySize.width / max(baseSize.width, 1),
-            y: rect.minY * displaySize.height / max(baseSize.height, 1),
-            width: rect.width * displaySize.width / max(baseSize.width, 1),
-            height: rect.height * displaySize.height / max(baseSize.height, 1)
+            x: renderRect.minX + rect.minX * renderRect.width / max(baseSize.width, 1),
+            y: renderRect.minY + rect.minY * renderRect.height / max(baseSize.height, 1),
+            width: rect.width * renderRect.width / max(baseSize.width, 1),
+            height: rect.height * renderRect.height / max(baseSize.height, 1)
+        )
+    }
+
+    private func annotationRenderRect(in displaySize: CGSize) -> CGRect {
+        guard let renderAspectRatio, renderAspectRatio > 0 else {
+            return CGRect(origin: .zero, size: displaySize)
+        }
+
+        return AspectRatioRect.scaledToFill(aspectRatio: renderAspectRatio, in: displaySize)
+    }
+}
+
+private enum AspectRatioRect {
+    static func scaledToFill(aspectRatio: CGFloat, in containerSize: CGSize) -> CGRect {
+        let containerWidth = max(containerSize.width, 1)
+        let containerHeight = max(containerSize.height, 1)
+        let containerAspectRatio = containerWidth / containerHeight
+
+        let size: CGSize
+        if aspectRatio > containerAspectRatio {
+            size = CGSize(width: containerHeight * aspectRatio, height: containerHeight)
+        } else {
+            size = CGSize(width: containerWidth, height: containerWidth / aspectRatio)
+        }
+
+        return CGRect(
+            x: (containerWidth - size.width) / 2,
+            y: (containerHeight - size.height) / 2,
+            width: size.width,
+            height: size.height
         )
     }
 }
@@ -1286,76 +1515,245 @@ private struct ImageAdjustmentSession: Identifiable {
     var exitsContinuationOnConfirm = true
 }
 
-private struct AnnotationStroke: Identifiable {
+private struct GenerateReviewSession: Identifiable {
     let id = UUID()
-    var points: [CGPoint]
+    let request: GenerationRequest
+    let pipelineResult: PromptPipelineResult
+    let originalFinalPrompt: String
+    let title: String
+    let thumbnail: ThumbnailStyle
+    let image: UIImage?
+    let continuationSourceClipID: UUID?
+    let continuationSourceClipTitle: String?
 }
 
-private struct AnnotationCircle: Identifiable {
-    let id = UUID()
-    var rect: CGRect
-}
+private struct GenerateReviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let session: GenerateReviewSession
+    let onConfirm: (String) -> Void
+    @State private var editedFinalPrompt: String
 
-private struct AnnotationText: Identifiable {
-    let id: UUID
-    var text: String
-    var position: CGPoint
-
-    init(id: UUID = UUID(), text: String, position: CGPoint) {
-        self.id = id
-        self.text = text
-        self.position = position
+    init(session: GenerateReviewSession, onConfirm: @escaping (String) -> Void) {
+        self.session = session
+        self.onConfirm = onConfirm
+        _editedFinalPrompt = State(initialValue: session.originalFinalPrompt)
     }
-}
 
-private enum StudioAnnotation: Identifiable {
-    case stroke(AnnotationStroke)
-    case circle(AnnotationCircle)
-    case text(AnnotationText)
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    summarySection
+                    imageSection
+                    promptSection
+                    detailsSection
+                }
+                .padding(PannotateTheme.Metrics.pagePadding)
+            }
+            .background(PannotateTheme.Colors.background.ignoresSafeArea())
+            .navigationTitle(L10n.string("generation.review_generation"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.cancel") {
+                        dismiss()
+                    }
+                }
 
-    var id: UUID {
-        switch self {
-        case .stroke(let stroke):
-            stroke.id
-        case .circle(let circle):
-            circle.id
-        case .text(let text):
-            text.id
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("generation.confirm_generate") {
+                        onConfirm(editedFinalPrompt)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
         }
     }
 
-    var stroke: AnnotationStroke? {
-        if case .stroke(let stroke) = self {
-            return stroke
+    private var summarySection: some View {
+        reviewCard(title: L10n.string("common.summary")) {
+            VStack(alignment: .leading, spacing: 10) {
+                metadataRow(label: L10n.string("common.project"), value: session.request.projectName ?? L10n.string("common.no_project"))
+                metadataRow(label: L10n.string("generation.context"), value: generationContextText)
+                metadataRow(label: L10n.string("generation.mode"), value: session.pipelineResult.interpretationMode.title)
+                metadataRow(label: L10n.string("studio.annotations"), value: "\(session.pipelineResult.normalizedAnnotations.count)")
+            }
         }
-
-        return nil
     }
 
-    var circle: AnnotationCircle? {
-        if case .circle(let circle) = self {
-            return circle
+    private var imageSection: some View {
+        reviewCard(title: L10n.string("generation.image_preview")) {
+            ZStack {
+                if let image = session.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    MockThumbnail(style: session.thumbnail, cornerRadius: 18)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 170)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+            )
         }
-
-        return nil
     }
 
-    var text: AnnotationText? {
-        if case .text(let text) = self {
-            return text
-        }
+    private var promptSection: some View {
+        reviewCard(title: L10n.string("generation.editable_final_prompt")) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("generation.review_prompt_note")
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
-        return nil
+                TextEditor(text: $editedFinalPrompt)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 180)
+                    .padding(12)
+                    .background(PannotateTheme.Colors.background.opacity(0.72))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+                    )
+
+                if editedFinalPrompt != session.originalFinalPrompt {
+                    Button {
+                        editedFinalPrompt = session.originalFinalPrompt
+                    } label: {
+                        Label("generation.restore_generated_prompt", systemImage: "arrow.counterclockwise")
+                            .font(PannotateTheme.Typography.metadataEmphasis)
+                            .foregroundStyle(PannotateTheme.Colors.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var detailsSection: some View {
+        reviewCard(title: L10n.string("common.details")) {
+            VStack(alignment: .leading, spacing: 10) {
+                metadataRow(label: L10n.string("generation.request_id"), value: String(session.request.id.uuidString.prefix(8)))
+                metadataRow(label: L10n.string("generation.prompt"), value: session.request.motionPrompt)
+                metadataRow(label: L10n.string("generation.duration"), value: session.request.mockDuration)
+
+                if let sourceClipTitle = session.continuationSourceClipTitle {
+                    metadataRow(label: L10n.string("generation.source_clip"), value: sourceClipTitle)
+                }
+            }
+        }
+    }
+
+    private var generationContextText: String {
+        session.request.startsFromPreviousFrame
+            ? L10n.string("generation.continue_from_last_frame")
+            : L10n.string("generation.new_shot")
+    }
+
+    private func reviewCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(PannotateTheme.Typography.label)
+                .tracking(1.6)
+                .textCase(.uppercase)
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+            content()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PannotateTheme.Colors.cardMuted)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+        )
+    }
+
+    private func metadataRow(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(label)
+                .font(PannotateTheme.Typography.label)
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                .frame(width: 92, alignment: .leading)
+
+            Text(value)
+                .font(PannotateTheme.Typography.metadata)
+                .foregroundStyle(PannotateTheme.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
 private struct StudioPromptPreview {
     let request: GenerationRequest
+    let pipelineResult: PromptPipelineResult
 
-    var humanSummary: String {
+    var interpretationModeText: String {
+        switch pipelineResult.interpretationMode {
+        case .fast:
+            L10n.string("studio.fast_mode_preview_text")
+        case .smart:
+            L10n.string("studio.smart_mode_preview_text")
+        }
+    }
+
+    var currentProjectText: String {
+        request.projectName ?? L10n.string("common.no_project_selected")
+    }
+
+    var generationContextText: String {
+        if request.startsFromPreviousFrame {
+            return String.localizedStringWithFormat(
+                L10n.string("generation.context_continue_format"),
+                request.sourceClipTitle ?? L10n.string("outputs.selected_output_clip")
+            )
+        }
+
+        return L10n.string("generation.context_new_shot")
+    }
+
+    var motionPromptText: String {
+        request.motionPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? L10n.string("studio.no_motion_prompt")
+            : request.motionPrompt
+    }
+
+    var annotationSummaryText: String {
         """
-        Request \(request.id.uuidString.prefix(8)) will create a \(request.mockDuration) mock clip in \(request.generationMode.title) mode for \(request.projectName ?? "the current project"). It uses \(request.sourceImageStatus.lowercased()), \(request.strokeCount) strokes, \(request.circleCount) circles, and \(request.textAnnotations.count) text labels as local guidance.
+        \(request.annotationSummary)
+
+        \(pipelineResult.annotationSummary.humanSummary)
         """
+    }
+
+    var normalizedAnnotationData: String {
+        guard pipelineResult.normalizedAnnotations.isEmpty == false else {
+            return "No normalized annotation objects yet."
+        }
+
+        return pipelineResult.normalizedAnnotations
+            .map { annotation in
+                """
+                - id: \(annotation.id.uuidString.prefix(8))
+                  type: \(annotation.type.rawValue)
+                  position: \(annotation.positionDescription.rawValue)
+                  size: \(annotation.sizeDescription.rawValue)
+                  bounds: x \(formatted(annotation.normalizedBounds.minX)), y \(formatted(annotation.normalizedBounds.minY)), w \(formatted(annotation.normalizedBounds.width)), h \(formatted(annotation.normalizedBounds.height))
+                  text: \(annotation.textContent ?? "None")
+                """
+            }
+            .joined(separator: "\n")
     }
 
     var structuredFields: String {
@@ -1366,12 +1764,36 @@ private struct StudioPromptPreview {
         Source image: \(request.sourceImageStatus)
         Source clip: \(request.sourceClipTitle ?? "None")\(request.sourceClipID.map { " (\($0.uuidString))" } ?? "")
         Mode: \(request.generationMode.title) (\(request.generationMode.requestValue))
+        Interpretation mode: \(pipelineResult.interpretationMode.title) (\(pipelineResult.interpretationMode.requestValue))
         Continuation: \(request.startsFromPreviousFrame ? "Yes" : "No")
         Mock duration: \(request.mockDuration)
         Output style: \(request.outputStyle)
         Quality: \(request.quality)
         Motion prompt: \(request.motionPrompt)
         Text annotations: \(request.textAnnotations.isEmpty ? "None" : request.textAnnotations.joined(separator: "; "))
+        """
+    }
+
+    var smartPayloadPreview: String {
+        let payload = pipelineResult.smartPayload
+        let annotationLines = payload.annotations.isEmpty
+            ? "None"
+            : payload.annotations.map { "- \($0.readableDescription)" }.joined(separator: "\n")
+
+        return """
+        Smart Mode preview. This is a simulated LLM interpretation. No real API call yet.
+
+        Future LLM instruction:
+        \(payload.instruction)
+
+        Original image: \(payload.originalImageStatus)
+        Project: \(payload.projectName ?? "No project")
+        Mode: \(payload.generationMode.title)
+        Continuation source: \(payload.continuationSourceClipTitle ?? "None")
+        User prompt: \(payload.userPrompt)
+
+        Normalized annotation objects:
+        \(annotationLines)
         """
     }
 
@@ -1383,6 +1805,7 @@ private struct StudioPromptPreview {
         return """
         {
           "requestId": "\(request.id.uuidString)",
+          "interpretationMode": "\(pipelineResult.interpretationMode.requestValue)",
           "project": {
             "id": "\(request.projectID?.uuidString ?? "none")",
             "name": "\(jsonEscaped(request.projectName ?? "No project"))"
@@ -1398,8 +1821,12 @@ private struct StudioPromptPreview {
           "annotations": {
             "strokes": \(request.strokeCount),
             "circles": \(request.circleCount),
-            "texts": [\(textValues)]
+            "texts": [\(textValues)],
+            "normalizedCount": \(pipelineResult.normalizedAnnotations.count)
           },
+          "fastPrompt": "\(jsonEscaped(pipelineResult.fastPrompt))",
+          "smartMockResult": "\(jsonEscaped(pipelineResult.smartMockResult))",
+          "finalVideoPrompt": "\(jsonEscaped(pipelineResult.finalVideoPrompt))",
           "duration": "\(request.mockDuration)",
           "outputStyle": "\(jsonEscaped(request.outputStyle))",
           "quality": "\(jsonEscaped(request.quality))",
@@ -1414,6 +1841,10 @@ private struct StudioPromptPreview {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
     }
+
+    private func formatted(_ value: CGFloat) -> String {
+        String(format: "%.2f", Double(value))
+    }
 }
 
 private struct PromptPreviewSheet: View {
@@ -1424,20 +1855,27 @@ private struct PromptPreviewSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    previewSection(title: "Summary", text: preview.humanSummary)
-                    previewSection(title: "Structured Fields", text: preview.structuredFields)
-                    previewSection(title: "Annotation Summary", text: preview.request.annotationSummary)
-                    previewSection(title: "Generated AI Instruction", text: preview.request.generatedInstruction)
-                    previewSection(title: "JSON-Style Preview", text: preview.jsonPreview, monospaced: true)
+                    previewSection(title: L10n.string("studio.interpretation_mode"), text: preview.interpretationModeText)
+                    previewSection(title: L10n.string("studio.user_motion_prompt"), text: preview.motionPromptText)
+                    previewSection(title: L10n.string("common.current_project"), text: preview.currentProjectText)
+                    previewSection(title: L10n.string("generation.context"), text: preview.generationContextText)
+                    previewSection(title: L10n.string("generation.annotation_summary"), text: preview.annotationSummaryText)
+                    previewSection(title: L10n.string("generation.normalized_annotation_data"), text: preview.normalizedAnnotationData, monospaced: true)
+                    previewSection(title: L10n.string("generation.fast_mode_prompt"), text: preview.pipelineResult.fastPrompt)
+                    previewSection(title: L10n.string("generation.smart_payload"), text: preview.smartPayloadPreview)
+                    previewSection(title: L10n.string("generation.smart_mock_result"), text: preview.pipelineResult.smartMockResult)
+                    previewSection(title: L10n.string("generation.final_video_prompt"), text: preview.pipelineResult.finalVideoPrompt)
+                    previewSection(title: L10n.string("generation.structured_fields"), text: preview.structuredFields)
+                    previewSection(title: L10n.string("generation.json_style_preview"), text: preview.jsonPreview, monospaced: true)
                 }
                 .padding(PannotateTheme.Metrics.pagePadding)
             }
             .background(PannotateTheme.Colors.background.ignoresSafeArea())
-            .navigationTitle("Request Preview")
+            .navigationTitle(L10n.string("studio.request_preview"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
+                    Button("common.done") {
                         dismiss()
                     }
                     .fontWeight(.bold)
@@ -1449,7 +1887,7 @@ private struct PromptPreviewSheet: View {
     private func previewSection(title: String, text: String, monospaced: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.caption.weight(.bold))
+                .font(PannotateTheme.Typography.label)
                 .tracking(1.6)
                 .textCase(.uppercase)
                 .foregroundStyle(PannotateTheme.Colors.tertiaryText)
@@ -1498,7 +1936,7 @@ private struct ImageAdjustmentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 22) {
-                Text("Frame the image before annotating. This is a local prototype adjustment only.")
+                Text("studio.adjust_image_note")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(PannotateTheme.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -1507,13 +1945,13 @@ private struct ImageAdjustmentView: View {
                 adjustmentCanvas
                     .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
 
-                Label("Drag to reposition. Pinch to zoom.", systemImage: "hand.draw")
-                    .font(.subheadline.weight(.bold))
+                Label("studio.adjust_image_hint", systemImage: "hand.draw")
+                    .font(PannotateTheme.Typography.metadataEmphasis)
                     .foregroundStyle(PannotateTheme.Colors.tertiaryText)
 
                 Spacer()
 
-                PrimaryActionButton(title: "Use This Framing", systemImage: "checkmark") {
+                PrimaryActionButton(title: L10n.string("studio.use_this_framing"), systemImage: "checkmark") {
                     onConfirm(session.image, imageScale, imageOffset)
                     dismiss()
                 }
@@ -1522,18 +1960,18 @@ private struct ImageAdjustmentView: View {
             }
             .padding(.top, 20)
             .background(PannotateTheme.Colors.background.ignoresSafeArea())
-            .navigationTitle("Adjust Image")
+            .navigationTitle(L10n.string("studio.adjust_image"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("common.cancel") {
                         onCancel()
                         dismiss()
                     }
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Reset") {
+                    Button("common.reset") {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                             imageScale = 1
                             lastImageScale = 1

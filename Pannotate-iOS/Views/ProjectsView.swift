@@ -14,13 +14,13 @@ struct ProjectsView: View {
     var body: some View {
         FixedHeaderPage {
             BrandHeader(trailingSystemImage: "magnifyingglass")
-            PageTitle(title: "Projects", subtitle: "Your creative workspace")
+            PageTitle(title: L10n.string("tab.projects"), subtitle: L10n.string("projects.subtitle"))
         } content: {
             createProjectCard
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("Recent Projects")
-                    .font(.title3.weight(.bold))
+                Text("projects.recent_projects")
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                 ForEach(projects) { project in
@@ -32,9 +32,9 @@ struct ProjectsView: View {
             NewProjectSheet { name in
                 let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 let project = Project(
-                    title: trimmedName.isEmpty ? "Untitled Project" : trimmedName,
+                    title: trimmedName.isEmpty ? L10n.string("projects.untitled_project") : trimmedName,
                     clipCount: 0,
-                    updatedAt: "Just now",
+                    updatedAt: L10n.string("common.just_now"),
                     thumbnail: .lights
                 )
 
@@ -49,14 +49,14 @@ struct ProjectsView: View {
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $projectToRename) { project in
-            ManagementRenameSheet(title: "Rename Project", placeholder: "Project name", initialName: project.title) { newName in
+            ManagementRenameSheet(title: L10n.string("projects.rename_project"), placeholder: L10n.string("projects.project_name"), initialName: project.title) { newName in
                 rename(project, to: newName)
             }
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
-        .alert("Delete Project?", isPresented: $showDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
+        .alert(L10n.string("projects.delete_project_question"), isPresented: $showDeleteConfirmation) {
+            Button("common.delete", role: .destructive) {
                 if let projectPendingDeletion {
                     delete(projectPendingDeletion)
                 }
@@ -64,11 +64,11 @@ struct ProjectsView: View {
                 projectPendingDeletion = nil
             }
 
-            Button("Cancel", role: .cancel) {
+            Button("common.cancel", role: .cancel) {
                 projectPendingDeletion = nil
             }
         } message: {
-            Text("This removes the project from this local prototype session.")
+            Text("projects.delete_project_message")
         }
     }
 
@@ -84,8 +84,8 @@ struct ProjectsView: View {
                     .background(PannotateTheme.Colors.accentSoft.opacity(0.70))
                     .clipShape(Circle())
 
-                Text("Create New Project")
-                    .font(.title3.weight(.bold))
+                Text("projects.create_new_project")
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(PannotateTheme.Colors.accent)
             }
             .frame(maxWidth: .infinity)
@@ -123,12 +123,12 @@ struct ProjectsView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
                             Text(project.title)
-                                .font(.headline.weight(.bold))
+                                .font(PannotateTheme.Typography.cardTitle)
                                 .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                             if isCurrent {
-                                Label("Current", systemImage: "checkmark.circle.fill")
-                                    .font(.caption.weight(.bold))
+                                Label("common.current", systemImage: "checkmark.circle.fill")
+                                    .font(PannotateTheme.Typography.label)
                                     .foregroundStyle(PannotateTheme.Colors.accent)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
@@ -137,8 +137,8 @@ struct ProjectsView: View {
                             }
                         }
 
-                        Text("\(project.clipCount) clips · \(project.updatedAt)")
-                            .font(.subheadline.weight(.semibold))
+                        Text(projectClipMetadata(project))
+                            .font(PannotateTheme.Typography.metadata)
                             .foregroundStyle(PannotateTheme.Colors.tertiaryText)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,27 +164,35 @@ struct ProjectsView: View {
             Button {
                 projectToRename = project
             } label: {
-                Label("Rename Project", systemImage: "pencil")
+                Label("projects.rename_project", systemImage: "pencil")
             }
 
             Button {
                 duplicate(project)
             } label: {
-                Label("Duplicate Project", systemImage: "plus.square.on.square")
+                Label("projects.duplicate_project", systemImage: "plus.square.on.square")
             }
 
             Button(role: .destructive) {
                 confirmDelete(project)
             } label: {
-                Label("Delete Project", systemImage: "trash")
+                Label("projects.delete_project", systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.title3.weight(.bold))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.tertiaryText)
                 .frame(width: 42, height: 42)
                 .contentShape(Circle())
         }
+    }
+
+    private func projectClipMetadata(_ project: Project) -> String {
+        String.localizedStringWithFormat(
+            L10n.string("projects.clip_metadata_format"),
+            project.clipCount,
+            project.updatedAt
+        )
     }
 
     private func rename(_ project: Project, to newName: String) {
@@ -197,7 +205,7 @@ struct ProjectsView: View {
                 id: project.id,
                 title: trimmedName,
                 clipCount: project.clipCount,
-                updatedAt: "Just now",
+                updatedAt: L10n.string("common.just_now"),
                 thumbnail: project.thumbnail
             )
         }
@@ -205,9 +213,9 @@ struct ProjectsView: View {
 
     private func duplicate(_ project: Project) {
         let copy = Project(
-            title: "\(project.title) Copy",
+            title: String.localizedStringWithFormat(L10n.string("projects.copy_format"), project.title),
             clipCount: project.clipCount,
-            updatedAt: "Just now",
+            updatedAt: L10n.string("common.just_now"),
             thumbnail: project.thumbnail
         )
 
@@ -241,11 +249,11 @@ private struct NewProjectSheet: View {
         NavigationStack {
             VStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Project Name")
-                        .font(.headline.weight(.bold))
+                    Text("projects.project_name")
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
-                    TextField("Untitled Project", text: $projectName)
+                    TextField(L10n.string("projects.untitled_project"), text: $projectName)
                         .font(.headline)
                         .textInputAutocapitalization(.words)
                         .padding(16)
@@ -262,12 +270,12 @@ private struct NewProjectSheet: View {
                         .font(.system(size: 40, weight: .semibold))
                         .foregroundStyle(PannotateTheme.Colors.accent)
 
-                    Text("Image Placeholder")
-                        .font(.headline.weight(.bold))
+                    Text("projects.image_placeholder")
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-                    Text("A real image picker comes later. For now this creates a local mock project.")
-                        .font(.subheadline.weight(.semibold))
+                    Text("projects.image_placeholder_note")
+                        .font(PannotateTheme.Typography.metadata)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(PannotateTheme.Colors.tertiaryText)
                 }
@@ -284,17 +292,17 @@ private struct NewProjectSheet: View {
             }
             .padding(PannotateTheme.Metrics.pagePadding)
             .background(PannotateTheme.Colors.background.ignoresSafeArea())
-            .navigationTitle("New Project")
+            .navigationTitle(L10n.string("projects.new_project"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("common.cancel") {
                         dismiss()
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
+                    Button("common.create") {
                         onCreate(projectName)
                         dismiss()
                     }
@@ -321,15 +329,15 @@ private struct ProjectDetailPlaceholderView: View {
                 .frame(height: 220)
 
             Text(project.title)
-                .font(.largeTitle.weight(.bold))
+                .font(.largeTitle.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-            Text("\(project.clipCount) clips · \(project.updatedAt)")
+            Text(projectClipMetadata(project))
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
-            Text("Project detail placeholder")
-                .font(.headline.weight(.bold))
+            Text("projects.detail_placeholder")
+                .font(PannotateTheme.Typography.cardTitle)
                 .foregroundStyle(PannotateTheme.Colors.accent)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 10)
@@ -338,32 +346,32 @@ private struct ProjectDetailPlaceholderView: View {
 
             VStack(spacing: 12) {
                 if isCurrent {
-                    Label("Current Project", systemImage: "checkmark.circle.fill")
-                        .font(.headline.weight(.bold))
+                    Label("projects.current_project", systemImage: "checkmark.circle.fill")
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.accent)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(PannotateTheme.Colors.accentSoft.opacity(0.58))
                         .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
                 } else {
-                    PrimaryActionButton(title: "Make Current", systemImage: "checkmark.circle") {
+                    PrimaryActionButton(title: L10n.string("projects.make_current"), systemImage: "checkmark.circle") {
                         onSelect()
                     }
                 }
 
-                SecondaryActionButton(title: "Rename", systemImage: "pencil") {
+                SecondaryActionButton(title: L10n.string("common.rename"), systemImage: "pencil") {
                     onRename()
                 }
 
-                SecondaryActionButton(title: "View Clips", systemImage: "film") {
+                SecondaryActionButton(title: L10n.string("projects.view_clips"), systemImage: "film") {
                     showViewClipsPlaceholder = true
                 }
 
                 Button(role: .destructive) {
                     showDeleteConfirmation = true
                 } label: {
-                    Label("Delete", systemImage: "trash")
-                        .font(.headline.weight(.bold))
+                    Label("common.delete", systemImage: "trash")
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
@@ -383,21 +391,29 @@ private struct ProjectDetailPlaceholderView: View {
         .background(PannotateTheme.Colors.background.ignoresSafeArea())
         .navigationTitle(project.title)
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Project Clips", isPresented: $showViewClipsPlaceholder) {
-            Button("OK", role: .cancel) {}
+        .alert(L10n.string("projects.project_clips"), isPresented: $showViewClipsPlaceholder) {
+            Button("common.ok", role: .cancel) {}
         } message: {
-            Text("Clip browsing for this project will be connected later in the prototype.")
+            Text("projects.project_clips_message")
         }
-        .alert("Delete Project?", isPresented: $showDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
+        .alert(L10n.string("projects.delete_project_question"), isPresented: $showDeleteConfirmation) {
+            Button("common.delete", role: .destructive) {
                 onDelete()
                 dismiss()
             }
 
-            Button("Cancel", role: .cancel) {}
+            Button("common.cancel", role: .cancel) {}
         } message: {
-            Text("This removes the project from this local prototype session.")
+            Text("projects.delete_project_message")
         }
+    }
+
+    private func projectClipMetadata(_ project: Project) -> String {
+        String.localizedStringWithFormat(
+            L10n.string("projects.clip_metadata_format"),
+            project.clipCount,
+            project.updatedAt
+        )
     }
 }
 

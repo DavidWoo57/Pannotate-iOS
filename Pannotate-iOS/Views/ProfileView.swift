@@ -28,7 +28,7 @@ struct ProfileView: View {
             statsGrid
 
             VStack(spacing: 14) {
-                SectionLabel(title: "Recent Activity")
+                SectionLabel(title: L10n.string("profile.recent_activity"))
 
                 VStack(spacing: 0) {
                     ForEach(activity) { item in
@@ -58,15 +58,15 @@ struct ProfileView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(profile.name)
-                        .font(.title3.weight(.bold))
+                        .font(.title3.weight(.semibold))
                         .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                     Text(profile.handle)
-                        .font(.headline.weight(.bold))
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
                     Text(profile.plan)
-                        .font(.subheadline.weight(.bold))
+                        .font(PannotateTheme.Typography.metadataEmphasis)
                         .foregroundStyle(PannotateTheme.Colors.accent)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 5)
@@ -83,14 +83,14 @@ struct ProfileView: View {
 
             VStack(spacing: 10) {
                 HStack {
-                    Text("Monthly Credits")
+                    Text("profile.monthly_credits")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
                     Spacer()
 
                     Text("\(profile.monthlyCreditsUsed) / \(profile.monthlyCreditsTotal)")
-                        .font(.headline.weight(.bold))
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.accent)
                 }
 
@@ -106,9 +106,9 @@ struct ProfileView: View {
 
     private var statsGrid: some View {
         HStack(spacing: 12) {
-            statCard(title: "Projects", value: profile.projectCount, systemImage: "folder")
-            statCard(title: "Clips", value: profile.clipCount, systemImage: "film")
-            statCard(title: "Exports", value: profile.exportCount, systemImage: "square.stack.3d.up")
+            statCard(title: L10n.string("tab.projects"), value: profile.projectCount, systemImage: "folder")
+            statCard(title: L10n.string("profile.clips"), value: profile.clipCount, systemImage: "film")
+            statCard(title: L10n.string("profile.exports"), value: profile.exportCount, systemImage: "square.stack.3d.up")
         }
     }
 
@@ -119,11 +119,11 @@ struct ProfileView: View {
                 .foregroundStyle(PannotateTheme.Colors.accent)
 
             Text("\(value)")
-                .font(.title2.weight(.bold))
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
 
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(PannotateTheme.Typography.metadata)
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
         }
         .frame(maxWidth: .infinity)
@@ -141,11 +141,11 @@ struct ProfileView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
-                    .font(.headline.weight(.bold))
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                 Text(item.timeAgo)
-                    .font(.subheadline.weight(.semibold))
+                    .font(PannotateTheme.Typography.metadata)
                     .foregroundStyle(PannotateTheme.Colors.tertiaryText)
             }
 
@@ -169,8 +169,8 @@ struct ProfileView: View {
                     .background(PannotateTheme.Colors.accentSoft.opacity(0.5))
                     .clipShape(Circle())
 
-                Text("Settings")
-                    .font(.headline.weight(.bold))
+                Text("settings.title")
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                 Spacer()
@@ -186,13 +186,13 @@ struct ProfileView: View {
 
     private var prototypeRows: some View {
         VStack(spacing: 14) {
-            SectionLabel(title: "Account & Support")
+            SectionLabel(title: L10n.string("profile.account_support"))
 
             VStack(spacing: 0) {
-                profileLink(title: "Subscription", subtitle: "Manage Pro Creator plan", systemImage: "creditcard")
-                profileLink(title: "Help", subtitle: "Prototype support placeholder", systemImage: "questionmark.circle")
-                profileLink(title: "Privacy", subtitle: "Data controls placeholder", systemImage: "lock.shield")
-                profileLink(title: "Rate Pannotate", subtitle: "App Store prompt placeholder", systemImage: "star")
+                profileLink(title: L10n.string("settings.subscription"), subtitle: L10n.string("profile.subscription_subtitle"), systemImage: "creditcard")
+                profileLink(title: L10n.string("profile.help"), subtitle: L10n.string("profile.help_subtitle"), systemImage: "questionmark.circle")
+                profileLink(title: L10n.string("profile.privacy"), subtitle: L10n.string("profile.privacy_subtitle"), systemImage: "lock.shield")
+                profileLink(title: L10n.string("profile.rate_pannotate"), subtitle: L10n.string("profile.rate_pannotate_subtitle"), systemImage: "star")
             }
             .pannotateCard()
         }
@@ -212,11 +212,11 @@ struct ProfileView: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.headline.weight(.bold))
+                        .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.primaryText)
 
                     Text(subtitle)
-                        .font(.subheadline.weight(.semibold))
+                        .font(PannotateTheme.Typography.metadata)
                         .foregroundStyle(PannotateTheme.Colors.tertiaryText)
                 }
 
@@ -246,7 +246,7 @@ private struct ProfilePlaceholderDetailView: View {
                 .clipShape(Circle())
 
             Text(title)
-                .font(.largeTitle.weight(.bold))
+                .font(.largeTitle.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
 
             Text(subtitle)
@@ -254,8 +254,8 @@ private struct ProfilePlaceholderDetailView: View {
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
 
-            Text("This is a simple local prototype screen. Real account, support, payment, and store logic will be connected later.")
-                .font(.subheadline.weight(.semibold))
+            Text("profile.placeholder_detail_note")
+                .font(PannotateTheme.Typography.metadata)
                 .foregroundStyle(PannotateTheme.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
                 .padding(.top, 8)

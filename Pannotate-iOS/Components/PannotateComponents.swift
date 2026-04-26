@@ -1,4 +1,11 @@
 import SwiftUI
+import UIKit
+
+enum L10n {
+    static func string(_ key: String) -> String {
+        String(localized: String.LocalizationValue(key))
+    }
+}
 
 struct BrandHeader: View {
     var trailingSystemImage: String?
@@ -6,9 +13,9 @@ struct BrandHeader: View {
     var body: some View {
         HStack {
             HStack(spacing: 10) {
-                BrandMark(size: 38)
-                Text("Pannotate")
-                    .font(.title3.weight(.bold))
+                BrandMark(size: 34)
+                Text("app.name")
+                    .font(PannotateTheme.Typography.sectionTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
             }
 
@@ -18,7 +25,7 @@ struct BrandHeader: View {
                 Image(systemName: trailingSystemImage)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(PannotateTheme.Colors.secondaryText)
-                    .frame(width: 46, height: 46)
+                    .frame(width: 42, height: 42)
                     .background(PannotateTheme.Colors.cardMuted)
                     .clipShape(Circle())
                     .overlay(Circle().stroke(PannotateTheme.Colors.border, lineWidth: 1))
@@ -50,12 +57,12 @@ struct PageTitle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 38, weight: .bold, design: .rounded))
+                .font(PannotateTheme.Typography.pageTitle)
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
 
             if let subtitle {
                 Text(subtitle)
-                    .font(.headline.weight(.medium))
+                    .font(PannotateTheme.Typography.metadata)
                     .foregroundStyle(PannotateTheme.Colors.secondaryText)
             }
         }
@@ -68,8 +75,8 @@ struct SectionLabel: View {
 
     var body: some View {
         Text(title.uppercased())
-            .font(.caption.weight(.bold))
-            .tracking(2)
+            .font(PannotateTheme.Typography.label)
+            .tracking(1.4)
             .foregroundStyle(PannotateTheme.Colors.tertiaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -83,10 +90,10 @@ struct PrimaryActionButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.headline.weight(.bold))
+                .font(PannotateTheme.Typography.control)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(height: PannotateTheme.Metrics.buttonHeight)
                 .background(PannotateTheme.Colors.accent)
                 .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
                 .shadow(color: PannotateTheme.Colors.accent.opacity(0.32), radius: 18, y: 8)
@@ -103,10 +110,10 @@ struct SecondaryActionButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.headline.weight(.bold))
+                .font(PannotateTheme.Typography.control)
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(height: PannotateTheme.Metrics.buttonHeight)
                 .background(PannotateTheme.Colors.cardMuted)
                 .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
                 .overlay(
@@ -125,12 +132,12 @@ struct FixedHeaderPage<Header: View, Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 18) {
+            VStack(spacing: 14) {
                 header()
             }
             .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
-            .padding(.top, 14)
-            .padding(.bottom, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 14)
             .frame(maxWidth: .infinity)
             .background(PannotateTheme.Colors.background.opacity(0.96))
             .overlay(alignment: .bottom) {
@@ -140,11 +147,11 @@ struct FixedHeaderPage<Header: View, Content: View>: View {
             }
 
             ScrollView {
-                VStack(spacing: 18) {
+                VStack(spacing: 16) {
                     content()
                 }
                 .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
-                .padding(.top, 18)
+                .padding(.top, 16)
                 .padding(.bottom, bottomPadding)
             }
         }
@@ -202,17 +209,30 @@ struct MockThumbnail: View {
 
 struct FixedClipThumbnail: View {
     let style: ThumbnailStyle
+    var image: UIImage?
     var cornerRadius: CGFloat = 16
 
     var body: some View {
-        MockThumbnail(style: style, cornerRadius: cornerRadius)
-            .frame(width: PannotateTheme.Metrics.sequenceThumbnailSize.width, height: PannotateTheme.Metrics.sequenceThumbnailSize.height)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(PannotateTheme.Colors.border, lineWidth: 1)
-            )
+        GeometryReader { geometry in
+            Group {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    MockThumbnail(style: style, cornerRadius: cornerRadius)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        }
+        .frame(width: PannotateTheme.Metrics.sequenceThumbnailSize.width, height: PannotateTheme.Metrics.sequenceThumbnailSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+        )
     }
 }
 
@@ -251,12 +271,12 @@ struct CurrentProjectBanner: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(prefix): \(project.title)")
-                    .font(.headline.weight(.bold))
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
                     .lineLimit(1)
 
-                Text("Current project")
-                    .font(.caption.weight(.bold))
+                Text("common.current_project")
+                    .font(PannotateTheme.Typography.label)
                     .foregroundStyle(PannotateTheme.Colors.accent)
             }
 
@@ -266,7 +286,7 @@ struct CurrentProjectBanner: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.accent)
         }
-        .padding(12)
+        .padding(10)
         .background(PannotateTheme.Colors.cardMuted)
         .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
         .overlay(
@@ -294,12 +314,12 @@ struct ProjectRequiredEmptyState: View {
                 .clipShape(Circle())
 
             Text(title)
-                .font(.title2.weight(.bold))
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
                 .multilineTextAlignment(.center)
 
             Text(message)
-                .font(.headline.weight(.semibold))
+                .font(PannotateTheme.Typography.body)
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
 
@@ -333,8 +353,8 @@ struct ManagementRenameSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Name")
-                    .font(.headline.weight(.bold))
+                Text("common.name")
+                    .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
                 TextField(placeholder, text: $name)
@@ -348,8 +368,8 @@ struct ManagementRenameSheet: View {
                             .stroke(PannotateTheme.Colors.border, lineWidth: 1)
                     )
 
-                Text("This updates local prototype state only.")
-                    .font(.subheadline.weight(.semibold))
+                Text("common.local_prototype_state_note")
+                    .font(PannotateTheme.Typography.metadata)
                     .foregroundStyle(PannotateTheme.Colors.tertiaryText)
 
                 Spacer()
@@ -360,13 +380,13 @@ struct ManagementRenameSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("common.cancel") {
                         dismiss()
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button("common.save") {
                         onSave(name)
                         dismiss()
                     }
