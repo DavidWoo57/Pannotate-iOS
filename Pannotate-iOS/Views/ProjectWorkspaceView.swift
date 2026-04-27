@@ -443,38 +443,23 @@ struct ProjectWorkspaceView: View {
 
     private var workspaceBottomNavigation: some View {
         VStack(spacing: 0) {
-            LinearGradient(
-                colors: [
-                    PannotateTheme.Colors.background.opacity(0),
-                    PannotateTheme.Colors.background.opacity(0.68),
-                    PannotateTheme.Colors.background
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 24)
-            .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.14))
+                    .frame(height: 0.5)
 
-            HStack(spacing: 6) {
-                ForEach(ProjectWorkspaceSection.allCases) { section in
-                    workspaceNavigationButton(section)
+                HStack(spacing: 4) {
+                    ForEach(ProjectWorkspaceSection.allCases) { section in
+                        workspaceNavigationButton(section)
+                    }
                 }
+                .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
+                .padding(.top, 8)
+                .padding(.bottom, 9)
             }
-            .padding(4)
-            .background(PannotateTheme.Colors.elevated)
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(PannotateTheme.Colors.border, lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.08), radius: 12, y: 5)
-            .padding(.horizontal, 22)
-            .padding(.bottom, 8)
+            .background(PannotateTheme.Colors.background)
         }
-        .background(alignment: .bottom) {
-            PannotateTheme.Colors.background
-                .frame(height: 58)
-        }
+        .background(PannotateTheme.Colors.background.ignoresSafeArea(edges: .bottom))
     }
 
     private func workspaceNavigationButton(_ section: ProjectWorkspaceSection) -> some View {
@@ -497,9 +482,9 @@ struct ProjectWorkspaceView: View {
             .foregroundStyle(isSelected ? PannotateTheme.Colors.accent : PannotateTheme.Colors.secondaryText)
             .frame(maxWidth: .infinity)
             .frame(height: 40)
-            .background(isSelected ? PannotateTheme.Colors.accentSoft.opacity(0.52) : Color.clear)
-            .clipShape(Capsule())
-            .contentShape(Capsule())
+            .background(isSelected ? PannotateTheme.Colors.accentSoft.opacity(0.62) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(section.title)
