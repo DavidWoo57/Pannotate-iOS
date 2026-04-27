@@ -25,6 +25,7 @@ struct GenerationJob: Identifiable, Codable {
     let id: UUID
     let requestID: UUID
     let createdAt: Date
+    let failureReason: String?
     var status: GenerationJobStatus
 }
 

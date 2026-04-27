@@ -302,6 +302,7 @@ struct StudioView: View {
                 onGeneratedClip(videoGenerationService.outputClip(for: job, submission: submission, status: job.status))
             }
 
+            var didFail = false
             for step in 0...2 {
                 let status = await videoGenerationService.status(for: job, step: step)
                 job.status = status
@@ -309,15 +310,20 @@ struct StudioView: View {
                 await MainActor.run {
                     onGeneratedClip(videoGenerationService.outputClip(for: job, submission: submission, status: status))
                 }
+
+                if case .failed = status {
+                    didFail = true
+                    break
+                }
             }
 
             await MainActor.run {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     isGenerating = false
-                    successMessage = L10n.string("studio.mock_clip_generated")
+                    successMessage = didFail ? L10n.string("generation.generation_failed") : L10n.string("studio.mock_clip_generated")
                 }
 
-                if shouldClearContinuationAfterGeneration {
+                if didFail == false && shouldClearContinuationAfterGeneration {
                     onClearContinuation()
                     selectedImage = nil
                     selectedMockThumbnail = nil

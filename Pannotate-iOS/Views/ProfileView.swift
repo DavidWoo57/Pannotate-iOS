@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ProfileView: View {
+    var developerToolsActions: DeveloperToolsActions = .preview
+
     private let profile = MockPannotateData.profile
     private let activity = MockPannotateData.activity
 
@@ -10,7 +12,7 @@ struct ProfileView: View {
                 BrandHeader()
 
                 NavigationLink {
-                    SettingsView()
+                    SettingsView(developerToolsActions: developerToolsActions)
                 } label: {
                     Image(systemName: "gearshape")
                         .font(.headline.weight(.semibold))
@@ -159,7 +161,7 @@ struct ProfileView: View {
 
     private var settingsRow: some View {
         NavigationLink {
-            SettingsView()
+            SettingsView(developerToolsActions: developerToolsActions)
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: "gearshape")

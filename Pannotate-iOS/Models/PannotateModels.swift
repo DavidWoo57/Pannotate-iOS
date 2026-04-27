@@ -40,6 +40,7 @@ struct GeneratedClip: Identifiable, Codable {
     let generationMode: GenerationMode?
     let continuationSourceClipID: UUID?
     let continuationSourceClipTitle: String?
+    let failureReason: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -58,6 +59,7 @@ struct GeneratedClip: Identifiable, Codable {
         case generationMode
         case continuationSourceClipID
         case continuationSourceClipTitle
+        case failureReason
     }
 
     init(
@@ -76,7 +78,8 @@ struct GeneratedClip: Identifiable, Codable {
         annotationCount: Int? = nil,
         generationMode: GenerationMode? = nil,
         continuationSourceClipID: UUID? = nil,
-        continuationSourceClipTitle: String? = nil
+        continuationSourceClipTitle: String? = nil,
+        failureReason: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -94,6 +97,7 @@ struct GeneratedClip: Identifiable, Codable {
         self.generationMode = generationMode
         self.continuationSourceClipID = continuationSourceClipID
         self.continuationSourceClipTitle = continuationSourceClipTitle
+        self.failureReason = failureReason
     }
 
     init(from decoder: Decoder) throws {
@@ -114,6 +118,7 @@ struct GeneratedClip: Identifiable, Codable {
         generationMode = try container.decodeIfPresent(GenerationMode.self, forKey: .generationMode)
         continuationSourceClipID = try container.decodeIfPresent(UUID.self, forKey: .continuationSourceClipID)
         continuationSourceClipTitle = try container.decodeIfPresent(String.self, forKey: .continuationSourceClipTitle)
+        failureReason = try container.decodeIfPresent(String.self, forKey: .failureReason)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -134,6 +139,7 @@ struct GeneratedClip: Identifiable, Codable {
         try container.encodeIfPresent(generationMode, forKey: .generationMode)
         try container.encodeIfPresent(continuationSourceClipID, forKey: .continuationSourceClipID)
         try container.encodeIfPresent(continuationSourceClipTitle, forKey: .continuationSourceClipTitle)
+        try container.encodeIfPresent(failureReason, forKey: .failureReason)
     }
 }
 

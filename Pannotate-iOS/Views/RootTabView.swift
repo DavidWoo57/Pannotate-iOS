@@ -16,9 +16,10 @@ struct RootTabView: View {
     @State private var sequenceClipsByProject: [UUID: [SequenceClip]]
     @State private var studioStateByProject: [UUID: StudioProjectState]
     @State private var studioContinuationContext: StudioContinuationContext?
+    private let videoGenerationService: VideoGenerationService = MockVideoGenerationService()
 
     init() {
-        if let savedState = AppStateStore.load(), savedState.projects.isEmpty == false {
+        if let savedState = AppStateStore.load() {
             let validProjectIDs = Set(savedState.projects.map(\.id))
             let savedCurrentProjectID = savedState.currentProjectID.flatMap { validProjectIDs.contains($0) ? $0 : savedState.projects.first?.id } ?? savedState.projects.first?.id
 
@@ -96,7 +97,8 @@ struct RootTabView: View {
                     onShowProjects: showProjectsTab,
                     onShowStudio: showStudioTab,
                     onContinueClip: continueFromClip,
-                    onAddToSequence: addToSequence
+                    onAddToSequence: addToSequence,
+                    onRetryClip: retryGeneration
                 ) {
                     withAnimation(.easeInOut) {
                         selectedTab = .sequence
@@ -117,7 +119,7 @@ struct RootTabView: View {
             .tag(PannotateTab.sequence)
 
             NavigationStack {
-                ProfileView()
+                ProfileView(developerToolsActions: developerToolsActions)
             }
             .tabItem {
                 Label("tab.profile", systemImage: "person")
@@ -135,6 +137,16 @@ struct RootTabView: View {
     private var currentStudioState: StudioProjectState? {
         guard let currentProjectID else { return nil }
         return studioStateByProject[currentProjectID]
+    }
+
+    private var developerToolsActions: DeveloperToolsActions {
+        DeveloperToolsActions(
+            stateSummary: makeDeveloperStateSummary,
+            clearAllLocalData: clearAllLocalData,
+            addSampleProject: { _ = ensureDebugProject() },
+            addSampleOutputs: addSampleOutputs,
+            addFailedMockJob: addFailedMockJob
+        )
     }
 
     private var projectsBinding: Binding<[Project]> {
@@ -246,6 +258,99 @@ struct RootTabView: View {
         saveState()
     }
 
+    @discardableResult
+    private func ensureDebugProject() -> UUID {
+        if let currentProjectID, projects.contains(where: { $0.id == currentProjectID }) {
+            return currentProjectID
+        }
+
+        let project = Project(
+            title: L10n.string("developer_tools.sample_project_title"),
+            clipCount: 0,
+            updatedAt: L10n.string("developer_tools.just_now"),
+            thumbnail: .city
+        )
+        projects.insert(project, at: 0)
+        currentProjectID = project.id
+        outputsByProject[project.id] = outputsByProject[project.id, default: []]
+        sequenceClipsByProject[project.id] = sequenceClipsByProject[project.id, default: []]
+        studioStateByProject[project.id] = studioStateByProject[project.id] ?? StudioProjectState()
+        saveState()
+        return project.id
+    }
+
+    private func clearAllLocalData() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            projects = []
+            currentProjectID = nil
+            outputsByProject = [:]
+            sequenceClipsByProject = [:]
+            studioStateByProject = [:]
+            studioContinuationContext = nil
+        }
+        saveState()
+    }
+
+    private func addSampleOutputs() {
+        let projectID = ensureDebugProject()
+        let samples = [
+            GeneratedClip(
+                title: L10n.string("developer_tools.sample_completed_clip_title"),
+                duration: "4s",
+                createdAt: L10n.string("developer_tools.just_now"),
+                status: .done,
+                thumbnail: .city,
+                generationRequestID: UUID(),
+                generationRequestSummary: L10n.string("developer_tools.sample_request_summary"),
+                interpretationMode: .fast,
+                finalVideoPrompt: L10n.string("developer_tools.sample_final_prompt"),
+                annotationCount: 1,
+                generationMode: .newShot
+            ),
+            GeneratedClip(
+                title: L10n.string("developer_tools.sample_processing_clip_title"),
+                duration: "4s",
+                createdAt: "Processing",
+                status: .processing(45),
+                thumbnail: .forest,
+                generationRequestID: UUID(),
+                generationRequestSummary: L10n.string("developer_tools.sample_request_summary"),
+                interpretationMode: .smart,
+                finalVideoPrompt: L10n.string("developer_tools.sample_final_prompt"),
+                annotationCount: 2,
+                generationMode: .newShot
+            )
+        ]
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            outputsByProject[projectID, default: []].insert(contentsOf: samples, at: 0)
+        }
+        saveState()
+    }
+
+    private func addFailedMockJob() {
+        let projectID = ensureDebugProject()
+        let failedClip = GeneratedClip(
+            title: L10n.string("developer_tools.sample_failed_clip_title"),
+            duration: "4s",
+            createdAt: L10n.string("generation.failed"),
+            status: .failed,
+            thumbnail: .lights,
+            generationRequestID: UUID(),
+            generationRequestSummary: L10n.string("developer_tools.sample_failed_request_summary"),
+            interpretationMode: .fast,
+            finalVideoPrompt: "mock fail: \(L10n.string("developer_tools.sample_final_prompt"))",
+            annotationCount: 1,
+            generationMode: .newShot,
+            failureReason: L10n.string("generation.mock_generation_failed")
+        )
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            outputsByProject[projectID, default: []].insert(failedClip, at: 0)
+        }
+        saveState()
+    }
+
     private func addToSequence(_ clip: GeneratedClip) -> Bool {
         guard let currentProjectID else { return false }
 
@@ -271,6 +376,50 @@ struct RootTabView: View {
 
         saveState()
         return true
+    }
+
+    private func retryGeneration(_ clip: GeneratedClip) {
+        guard let currentProjectID else { return }
+
+        Task {
+            var job = await videoGenerationService.submitRetry(for: clip)
+            await MainActor.run {
+                upsertOutputClip(
+                    videoGenerationService.retryOutputClip(for: job, failedClip: clip, status: job.status),
+                    projectID: currentProjectID
+                )
+            }
+
+            for step in 0...2 {
+                let status = await videoGenerationService.status(for: job, step: step)
+                job.status = status
+
+                await MainActor.run {
+                    upsertOutputClip(
+                        videoGenerationService.retryOutputClip(for: job, failedClip: clip, status: status),
+                        projectID: currentProjectID
+                    )
+                }
+
+                if case .failed = status {
+                    break
+                }
+            }
+        }
+    }
+
+    private func upsertOutputClip(_ clip: GeneratedClip, projectID: UUID) {
+        var clips = outputsByProject[projectID, default: []]
+        if let index = clips.firstIndex(where: { $0.id == clip.id }) {
+            clips[index] = clip
+        } else {
+            clips.insert(clip, at: 0)
+        }
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            outputsByProject[projectID] = clips
+        }
+        saveState()
     }
 
     private func removeSequenceClipsForDeletedOutputs(oldOutputs: [GeneratedClip], newOutputs: [GeneratedClip], projectID: UUID) {
@@ -321,6 +470,18 @@ struct RootTabView: View {
                 studioStateByProject: studioStateByProject.filter { validProjectIDs.contains($0.key) },
                 studioContinuationContext: studioContinuationContext
             )
+        )
+    }
+
+    private func makeDeveloperStateSummary() -> DeveloperToolsStateSummary {
+        let outputsCount = currentProjectID.map { outputsByProject[$0, default: []].count } ?? 0
+        let sequenceCount = currentProjectID.map { sequenceClipsByProject[$0, default: []].count } ?? 0
+
+        return DeveloperToolsStateSummary(
+            currentProjectName: currentProject?.title ?? L10n.string("common.no_project"),
+            projectCount: projects.count,
+            currentProjectOutputCount: outputsCount,
+            currentProjectSequenceCount: sequenceCount
         )
     }
 }

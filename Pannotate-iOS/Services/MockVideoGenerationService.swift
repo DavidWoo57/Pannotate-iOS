@@ -6,6 +6,17 @@ struct MockVideoGenerationService: VideoGenerationService {
             id: UUID(),
             requestID: submission.request.id,
             createdAt: Date(),
+            failureReason: failureReason(for: submission.finalVideoPrompt),
+            status: .queued
+        )
+    }
+
+    func submitRetry(for clip: GeneratedClip) async -> GenerationJob {
+        GenerationJob(
+            id: clip.id,
+            requestID: clip.generationRequestID ?? UUID(),
+            createdAt: Date(),
+            failureReason: nil,
             status: .queued
         )
     }
@@ -13,6 +24,10 @@ struct MockVideoGenerationService: VideoGenerationService {
     func status(for job: GenerationJob, step: Int) async -> GenerationJobStatus {
         let delay: UInt64 = step == 0 ? 450_000_000 : 950_000_000
         try? await Task.sleep(nanoseconds: delay)
+
+        if step >= 2, let failureReason = job.failureReason {
+            return .failed(failureReason)
+        }
 
         switch step {
         case 0:
@@ -41,21 +56,58 @@ struct MockVideoGenerationService: VideoGenerationService {
             annotationCount: submission.pipelineResult.normalizedAnnotations.count,
             generationMode: submission.request.generationMode,
             continuationSourceClipID: submission.continuationSourceClipID,
-            continuationSourceClipTitle: submission.continuationSourceClipTitle
+            continuationSourceClipTitle: submission.continuationSourceClipTitle,
+            failureReason: failureReason(from: status)
+        )
+    }
+
+    func retryOutputClip(for job: GenerationJob, failedClip: GeneratedClip, status: GenerationJobStatus) -> GeneratedClip {
+        GeneratedClip(
+            id: failedClip.id,
+            title: failedClip.title,
+            duration: failedClip.duration,
+            createdAt: createdAtLabel(for: status),
+            status: status.clipStatus,
+            thumbnail: failedClip.thumbnail,
+            image: failedClip.image,
+            generationRequestID: failedClip.generationRequestID ?? job.requestID,
+            generationRequestSummary: failedClip.generationRequestSummary,
+            interpretationMode: failedClip.interpretationMode,
+            finalVideoPrompt: failedClip.finalVideoPrompt,
+            originalGeneratedPrompt: failedClip.originalGeneratedPrompt,
+            annotationCount: failedClip.annotationCount,
+            generationMode: failedClip.generationMode,
+            continuationSourceClipID: failedClip.continuationSourceClipID,
+            continuationSourceClipTitle: failedClip.continuationSourceClipTitle,
+            failureReason: failureReason(from: status)
         )
     }
 
     private func createdAtLabel(for status: GenerationJobStatus) -> String {
         switch status {
         case .queued:
-            "Queued"
+            L10n.string("status.queued")
         case .processing:
             "Processing"
         case .completed:
             "Just now"
         case .failed:
-            "Failed"
+            L10n.string("generation.failed")
         }
+    }
+
+    private func failureReason(for finalVideoPrompt: String) -> String? {
+        finalVideoPrompt.localizedCaseInsensitiveContains("mock fail")
+            ? L10n.string("generation.mock_generation_failed")
+            : nil
+    }
+
+    private func failureReason(from status: GenerationJobStatus) -> String? {
+        if case .failed(let reason) = status {
+            return reason
+        }
+
+        return nil
     }
 
     private func generationRequestSummary(for request: GenerationRequest, pipelineResult: PromptPipelineResult, finalVideoPrompt: String) -> String {

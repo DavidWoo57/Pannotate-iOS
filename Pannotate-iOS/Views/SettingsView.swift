@@ -1,9 +1,41 @@
 import SwiftUI
+import UIKit
+
+struct DeveloperToolsStateSummary {
+    let currentProjectName: String
+    let projectCount: Int
+    let currentProjectOutputCount: Int
+    let currentProjectSequenceCount: Int
+
+    static let preview = DeveloperToolsStateSummary(
+        currentProjectName: "Urban Sunset",
+        projectCount: 3,
+        currentProjectOutputCount: 3,
+        currentProjectSequenceCount: 4
+    )
+}
+
+struct DeveloperToolsActions {
+    let stateSummary: () -> DeveloperToolsStateSummary
+    let clearAllLocalData: () -> Void
+    let addSampleProject: () -> Void
+    let addSampleOutputs: () -> Void
+    let addFailedMockJob: () -> Void
+
+    static let preview = DeveloperToolsActions(
+        stateSummary: { .preview },
+        clearAllLocalData: {},
+        addSampleProject: {},
+        addSampleOutputs: {},
+        addFailedMockJob: {}
+    )
+}
 
 struct SettingsView: View {
     @AppStorage("appTheme") private var selectedThemeRawValue = AppTheme.dark.rawValue
     @AppStorage("hasCompletedAuthWelcome") private var hasCompletedAuthWelcome = false
     @AppStorage("authMode") private var authModeRawValue = AuthMode.guest.rawValue
+    let developerToolsActions: DeveloperToolsActions
     @State private var pushNotificationsEnabled = true
     @State private var outputQuality = "Standard"
     @State private var autoChainClips = false
@@ -15,6 +47,10 @@ struct SettingsView: View {
         ("Standard", "settings.quality.standard", "settings.quality.standard_subtitle"),
         ("High", "settings.quality.high", "settings.quality.high_subtitle")
     ]
+
+    init(developerToolsActions: DeveloperToolsActions = .preview) {
+        self.developerToolsActions = developerToolsActions
+    }
 
     var body: some View {
         ScrollView {
@@ -124,6 +160,18 @@ struct SettingsView: View {
                                 title: L10n.string("onboarding.help_title"),
                                 detail: L10n.string("onboarding.help_subtitle"),
                                 systemImage: "questionmark.circle"
+                            )
+                            .padding(16)
+                        }
+                        .buttonStyle(.plain)
+
+                        NavigationLink {
+                            DeveloperToolsView(actions: developerToolsActions)
+                        } label: {
+                            settingsLinkContent(
+                                title: L10n.string("developer_tools.title"),
+                                detail: L10n.string("developer_tools.subtitle"),
+                                systemImage: "hammer"
                             )
                             .padding(16)
                         }
@@ -356,6 +404,316 @@ struct SettingsView: View {
 
             Image(systemName: "chevron.right")
                 .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+        }
+    }
+}
+
+private struct DeveloperToolsView: View {
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("hasCompletedAuthWelcome") private var hasCompletedAuthWelcome = false
+    @AppStorage("authMode") private var authModeRawValue = AuthMode.guest.rawValue
+    @AppStorage("appTheme") private var selectedThemeRawValue = AppTheme.dark.rawValue
+
+    let actions: DeveloperToolsActions
+
+    @State private var pendingConfirmation: DeveloperToolConfirmation?
+    @State private var statusMessage: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                appFlowSection
+                localDataSection
+                appStateSection
+
+                Text("developer_tools.safety_note")
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(PannotateTheme.Metrics.pagePadding)
+            .padding(.bottom, 48)
+        }
+        .background(PannotateTheme.Colors.background.ignoresSafeArea())
+        .navigationTitle(L10n.string("developer_tools.title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .alert(L10n.string("developer_tools.are_you_sure"), isPresented: confirmationBinding) {
+            Button(L10n.string("common.cancel"), role: .cancel) {
+                pendingConfirmation = nil
+            }
+
+            Button(pendingConfirmation?.actionTitle ?? L10n.string("common.confirm"), role: .destructive) {
+                executePendingConfirmation()
+            }
+        } message: {
+            Text(pendingConfirmation?.message ?? L10n.string("developer_tools.cannot_undo"))
+        }
+    }
+
+    private var appFlowSection: some View {
+        debugSection(title: L10n.string("developer_tools.section.app_flow")) {
+            VStack(spacing: 0) {
+                debugActionRow(
+                    title: L10n.string("developer_tools.reset_onboarding"),
+                    subtitle: L10n.string("developer_tools.reset_onboarding_subtitle"),
+                    systemImage: "rectangle.stack.badge.play"
+                ) {
+                    pendingConfirmation = .resetOnboarding
+                }
+
+                Divider().overlay(PannotateTheme.Colors.border)
+
+                debugActionRow(
+                    title: L10n.string("developer_tools.reset_auth_welcome"),
+                    subtitle: L10n.string("developer_tools.reset_auth_welcome_subtitle"),
+                    systemImage: "person.crop.circle.badge.questionmark"
+                ) {
+                    pendingConfirmation = .resetAuthWelcome
+                }
+            }
+            .pannotateCard()
+        }
+    }
+
+    private var localDataSection: some View {
+        debugSection(title: L10n.string("developer_tools.section.local_data")) {
+            VStack(spacing: 0) {
+                debugActionRow(
+                    title: L10n.string("developer_tools.add_sample_project"),
+                    subtitle: L10n.string("developer_tools.add_sample_project_subtitle"),
+                    systemImage: "folder.badge.plus"
+                ) {
+                    actions.addSampleProject()
+                    showStatus(L10n.string("developer_tools.sample_project_added"))
+                }
+
+                Divider().overlay(PannotateTheme.Colors.border)
+
+                debugActionRow(
+                    title: L10n.string("developer_tools.add_sample_outputs"),
+                    subtitle: L10n.string("developer_tools.add_sample_outputs_subtitle"),
+                    systemImage: "film.badge.plus"
+                ) {
+                    actions.addSampleOutputs()
+                    showStatus(L10n.string("developer_tools.sample_outputs_added"))
+                }
+
+                Divider().overlay(PannotateTheme.Colors.border)
+
+                debugActionRow(
+                    title: L10n.string("developer_tools.add_failed_mock_job"),
+                    subtitle: L10n.string("developer_tools.add_failed_mock_job_subtitle"),
+                    systemImage: "exclamationmark.triangle"
+                ) {
+                    actions.addFailedMockJob()
+                    showStatus(L10n.string("developer_tools.failed_job_added"))
+                }
+
+                Divider().overlay(PannotateTheme.Colors.border)
+
+                debugActionRow(
+                    title: L10n.string("developer_tools.clear_all_local_data"),
+                    subtitle: L10n.string("developer_tools.clear_all_local_data_subtitle"),
+                    systemImage: "trash",
+                    isDestructive: true
+                ) {
+                    pendingConfirmation = .clearAllLocalData
+                }
+            }
+            .pannotateCard()
+        }
+    }
+
+    private var appStateSection: some View {
+        debugSection(title: L10n.string("developer_tools.app_state_summary")) {
+            VStack(alignment: .leading, spacing: 14) {
+                if let statusMessage {
+                    Label(statusMessage, systemImage: "checkmark.circle.fill")
+                        .font(PannotateTheme.Typography.metadataEmphasis)
+                        .foregroundStyle(PannotateTheme.Colors.success)
+                }
+
+                VStack(spacing: 10) {
+                    ForEach(summaryRows, id: \.label) { row in
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(row.label)
+                                .font(PannotateTheme.Typography.label)
+                                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                                .frame(width: 142, alignment: .leading)
+
+                            Text(row.value)
+                                .font(PannotateTheme.Typography.metadataEmphasis)
+                                .foregroundStyle(PannotateTheme.Colors.primaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                PrimaryActionButton(title: L10n.string("developer_tools.copy_summary"), systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = stateSummaryText
+                    showStatus(L10n.string("developer_tools.summary_copied"))
+                }
+            }
+            .padding(16)
+            .pannotateCard()
+        }
+    }
+
+    private var summaryRows: [(label: String, value: String)] {
+        let summary = actions.stateSummary()
+        return [
+            (L10n.string("developer_tools.current_project"), summary.currentProjectName),
+            (L10n.string("developer_tools.project_count"), "\(summary.projectCount)"),
+            (L10n.string("developer_tools.output_count"), "\(summary.currentProjectOutputCount)"),
+            (L10n.string("developer_tools.sequence_count"), "\(summary.currentProjectSequenceCount)"),
+            (L10n.string("developer_tools.onboarding_completed"), yesNo(hasCompletedOnboarding)),
+            (L10n.string("developer_tools.auth_welcome_completed"), yesNo(hasCompletedAuthWelcome)),
+            (L10n.string("developer_tools.auth_mode"), authModeTitle),
+            (L10n.string("developer_tools.selected_theme"), selectedThemeTitle),
+            (L10n.string("developer_tools.language"), L10n.string("developer_tools.language_follows_ios"))
+        ]
+    }
+
+    private var stateSummaryText: String {
+        summaryRows
+            .map { "\($0.label): \($0.value)" }
+            .joined(separator: "\n")
+    }
+
+    private var confirmationBinding: Binding<Bool> {
+        Binding {
+            pendingConfirmation != nil
+        } set: { isPresented in
+            if isPresented == false {
+                pendingConfirmation = nil
+            }
+        }
+    }
+
+    private var authModeTitle: String {
+        switch AuthMode(rawValue: authModeRawValue) ?? .guest {
+        case .guest:
+            L10n.string("auth.guest_mode")
+        case .appleMock:
+            L10n.string("auth.apple_mock_mode")
+        case .googleMock:
+            L10n.string("auth.google_mock_mode")
+        case .emailMock:
+            L10n.string("auth.email_mock_mode")
+        }
+    }
+
+    private var selectedThemeTitle: String {
+        (AppTheme(rawValue: selectedThemeRawValue) ?? .system).title
+    }
+
+    private func debugSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 12) {
+            SectionLabel(title: title)
+            content()
+        }
+    }
+
+    private func debugActionRow(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        isDestructive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(isDestructive ? .red : PannotateTheme.Colors.accent)
+                    .frame(width: 38, height: 38)
+                    .background((isDestructive ? Color.red : PannotateTheme.Colors.accent).opacity(0.12))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(PannotateTheme.Typography.cardTitle)
+                        .foregroundStyle(isDestructive ? .red : PannotateTheme.Colors.primaryText)
+
+                    Text(subtitle)
+                        .font(PannotateTheme.Typography.metadata)
+                        .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+            .padding(16)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func executePendingConfirmation() {
+        guard let pendingConfirmation else { return }
+
+        switch pendingConfirmation {
+        case .resetOnboarding:
+            hasCompletedOnboarding = false
+            showStatus(L10n.string("developer_tools.onboarding_reset"))
+        case .resetAuthWelcome:
+            authModeRawValue = AuthMode.guest.rawValue
+            hasCompletedAuthWelcome = false
+            showStatus(L10n.string("developer_tools.auth_welcome_reset"))
+        case .clearAllLocalData:
+            actions.clearAllLocalData()
+            showStatus(L10n.string("developer_tools.local_data_cleared"))
+        }
+
+        self.pendingConfirmation = nil
+    }
+
+    private func showStatus(_ message: String) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+            statusMessage = message
+        }
+    }
+
+    private func yesNo(_ value: Bool) -> String {
+        value ? L10n.string("common.yes") : L10n.string("common.no")
+    }
+}
+
+private enum DeveloperToolConfirmation: Identifiable {
+    case resetOnboarding
+    case resetAuthWelcome
+    case clearAllLocalData
+
+    var id: String {
+        switch self {
+        case .resetOnboarding:
+            "resetOnboarding"
+        case .resetAuthWelcome:
+            "resetAuthWelcome"
+        case .clearAllLocalData:
+            "clearAllLocalData"
+        }
+    }
+
+    var actionTitle: String {
+        switch self {
+        case .resetOnboarding:
+            L10n.string("developer_tools.reset_onboarding")
+        case .resetAuthWelcome:
+            L10n.string("developer_tools.reset_auth_welcome")
+        case .clearAllLocalData:
+            L10n.string("developer_tools.clear_all_local_data")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .resetOnboarding:
+            L10n.string("developer_tools.reset_onboarding_confirmation")
+        case .resetAuthWelcome:
+            L10n.string("developer_tools.reset_auth_welcome_confirmation")
+        case .clearAllLocalData:
+            L10n.string("developer_tools.clear_all_local_data_confirmation")
         }
     }
 }

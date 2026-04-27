@@ -7,6 +7,7 @@ struct OutputsView: View {
     var onShowStudio: () -> Void = {}
     var onContinueClip: (GeneratedClip) -> Void = { _ in }
     var onAddToSequence: (GeneratedClip) -> Bool = { _ in false }
+    var onRetryClip: (GeneratedClip) -> Void = { _ in }
     var onShowSequence: () -> Void = {}
 
     @State private var selectedClip: GeneratedClip?
@@ -64,7 +65,9 @@ struct OutputsView: View {
             }
         }
         .sheet(item: $selectedClip) { clip in
-            ClipPreviewPlaceholderSheet(clip: clip)
+            ClipPreviewPlaceholderSheet(clip: clip) {
+                onRetryClip(clip)
+            }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -152,6 +155,22 @@ struct OutputsView: View {
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(.white)
                 }
+            } else if isFailed(clip.status) {
+                VStack(spacing: 10) {
+                    Image(systemName: outputCenterIcon(for: clip.status))
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .frame(width: 66, height: 66)
+                        .background(Color.red.opacity(0.34))
+                        .clipShape(Circle())
+
+                    Text(clip.failureReason ?? L10n.string("generation.something_went_wrong"))
+                        .font(PannotateTheme.Typography.metadataEmphasis)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .padding(.horizontal, 26)
+                }
             } else {
                 Image(systemName: outputCenterIcon(for: clip.status))
                     .font(.system(size: 30, weight: .bold))
@@ -178,28 +197,10 @@ struct OutputsView: View {
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
                 .lineLimit(1)
 
-            HStack(spacing: 12) {
-                Button {
-                    onContinueClip(clip)
-                } label: {
-                    Label("common.continue", systemImage: "arrow.clockwise")
-                        .font(PannotateTheme.Typography.cardTitle)
-                        .foregroundStyle(PannotateTheme.Colors.primaryText)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(PannotateTheme.Colors.outputSecondaryButton)
-                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
-                                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-
-                PrimaryActionButton(title: L10n.string("tab.sequence"), systemImage: "arrow.right") {
-                    addClipToSequence(clip)
-                    onShowSequence()
-                }
+            if isFailed(clip.status) {
+                failedClipActions(clip)
+            } else {
+                normalClipActions(clip)
             }
         }
         .padding(16)
@@ -229,6 +230,14 @@ struct OutputsView: View {
 
     private func clipMenu(_ clip: GeneratedClip) -> some View {
         Menu {
+            if isFailed(clip.status) {
+                Button {
+                    onRetryClip(clip)
+                } label: {
+                    Label("generation.retry", systemImage: "arrow.clockwise")
+                }
+            }
+
             Button {
                 clipToRename = clip
             } label: {
@@ -245,7 +254,7 @@ struct OutputsView: View {
                 clipPendingDeletion = clip
                 showDeleteConfirmation = true
             } label: {
-                Label("outputs.delete_clip", systemImage: "trash")
+                Label(isFailed(clip.status) ? L10n.string("generation.delete_failed_job") : L10n.string("outputs.delete_clip"), systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -285,7 +294,8 @@ struct OutputsView: View {
                 annotationCount: clip.annotationCount,
                 generationMode: clip.generationMode,
                 continuationSourceClipID: clip.continuationSourceClipID,
-                continuationSourceClipTitle: clip.continuationSourceClipTitle
+                continuationSourceClipTitle: clip.continuationSourceClipTitle,
+                failureReason: clip.failureReason
             )
         }
     }
@@ -367,11 +377,72 @@ struct OutputsView: View {
 
         return false
     }
+
+    private func isFailed(_ status: ClipStatus) -> Bool {
+        if case .failed = status {
+            return true
+        }
+
+        return false
+    }
+
+    private func normalClipActions(_ clip: GeneratedClip) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                onContinueClip(clip)
+            } label: {
+                Label("common.continue", systemImage: "arrow.clockwise")
+                    .font(PannotateTheme.Typography.cardTitle)
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(PannotateTheme.Colors.outputSecondaryButton)
+                    .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                            .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+
+            PrimaryActionButton(title: L10n.string("tab.sequence"), systemImage: "arrow.right") {
+                addClipToSequence(clip)
+                onShowSequence()
+            }
+        }
+    }
+
+    private func failedClipActions(_ clip: GeneratedClip) -> some View {
+        HStack(spacing: 12) {
+            PrimaryActionButton(title: L10n.string("generation.retry"), systemImage: "arrow.clockwise") {
+                onRetryClip(clip)
+            }
+
+            Button(role: .destructive) {
+                clipPendingDeletion = clip
+                showDeleteConfirmation = true
+            } label: {
+                Label("common.delete", systemImage: "trash")
+                    .font(PannotateTheme.Typography.cardTitle)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Color.red.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                            .stroke(Color.red.opacity(0.22), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+    }
 }
 
 private struct ClipPreviewPlaceholderSheet: View {
     @Environment(\.dismiss) private var dismiss
     let clip: GeneratedClip
+    let onRetry: () -> Void
 
     private enum Metrics {
         static let previewHeight: CGFloat = 230
@@ -401,6 +472,10 @@ private struct ClipPreviewPlaceholderSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
 
+                    if isFailed {
+                        failedPreviewActions
+                    }
+
                     generationDetails
                 }
                 .padding(PannotateTheme.Metrics.pagePadding)
@@ -428,6 +503,10 @@ private struct ClipPreviewPlaceholderSheet: View {
                     .foregroundStyle(PannotateTheme.Colors.accent)
 
                 detailRows
+
+                if isFailed {
+                    detailBlock(title: L10n.string("generation.failure_reason"), text: clip.failureReason ?? L10n.string("generation.something_went_wrong"))
+                }
 
                 if let finalVideoPrompt = clip.finalVideoPrompt {
                     detailBlock(title: L10n.string("generation.prompt_used"), text: finalVideoPrompt)
@@ -461,11 +540,14 @@ private struct ClipPreviewPlaceholderSheet: View {
             clip.originalGeneratedPrompt != nil ||
             clip.annotationCount != nil ||
             clip.generationMode != nil ||
-            clip.continuationSourceClipTitle != nil
+            clip.continuationSourceClipTitle != nil ||
+            clip.failureReason != nil ||
+            isFailed
     }
 
     private var detailRows: some View {
         VStack(spacing: 8) {
+            metadataRow(label: L10n.string("common.status"), value: clip.status.label)
             metadataRow(label: L10n.string("studio.interpretation_mode"), value: clip.interpretationMode?.title ?? L10n.string("common.not_captured"))
             metadataRow(label: L10n.string("generation.annotation_count"), value: clip.annotationCount.map(String.init) ?? L10n.string("common.not_captured"))
             metadataRow(label: L10n.string("generation.request_id"), value: clip.generationRequestID.map { String($0.uuidString.prefix(8)) } ?? L10n.string("common.not_captured"))
@@ -475,6 +557,40 @@ private struct ClipPreviewPlaceholderSheet: View {
                 metadataRow(label: L10n.string("generation.source_clip"), value: sourceClipTitle)
             }
         }
+    }
+
+    private var failedPreviewActions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(L10n.string("generation.generation_failed"), systemImage: "exclamationmark.triangle.fill")
+                .font(PannotateTheme.Typography.metadataEmphasis)
+                .foregroundStyle(.red)
+
+            Text(clip.failureReason ?? L10n.string("generation.something_went_wrong"))
+                .font(PannotateTheme.Typography.metadata)
+                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            PrimaryActionButton(title: L10n.string("generation.retry"), systemImage: "arrow.clockwise") {
+                onRetry()
+                dismiss()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.red.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                .stroke(Color.red.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private var isFailed: Bool {
+        if case .failed = clip.status {
+            return true
+        }
+
+        return false
     }
 
     private var generationContextText: String {
