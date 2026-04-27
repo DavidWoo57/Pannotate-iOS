@@ -18,13 +18,25 @@ struct ProjectsView: View {
         } content: {
             createProjectCard
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("projects.recent_projects")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+            if projects.isEmpty {
+                GuidedEmptyState(
+                    systemImage: "folder.badge.plus",
+                    title: L10n.string("empty.projects.title"),
+                    message: L10n.string("empty.projects.message"),
+                    primaryTitle: L10n.string("empty.projects.create_first"),
+                    primarySystemImage: "plus"
+                ) {
+                    isPresentingNewProject = true
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("projects.recent_projects")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-                ForEach(projects) { project in
-                    projectRow(project)
+                    ForEach(projects) { project in
+                        projectRow(project)
+                    }
                 }
             }
         }

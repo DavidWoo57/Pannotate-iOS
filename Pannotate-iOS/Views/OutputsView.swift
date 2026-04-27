@@ -4,6 +4,7 @@ struct OutputsView: View {
     @Binding var clips: [GeneratedClip]
     let currentProject: Project?
     var onShowProjects: () -> Void = {}
+    var onShowStudio: () -> Void = {}
     var onContinueClip: (GeneratedClip) -> Void = { _ in }
     var onAddToSequence: (GeneratedClip) -> Bool = { _ in false }
     var onShowSequence: () -> Void = {}
@@ -39,13 +40,15 @@ struct OutputsView: View {
                 }
 
                 if clips.isEmpty {
-                    Text("outputs.empty_message")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                        .background(PannotateTheme.Colors.cardMuted)
-                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                    GuidedEmptyState(
+                        systemImage: "film.badge.plus",
+                        title: L10n.string("empty.outputs.title"),
+                        message: L10n.string("empty.outputs.message"),
+                        primaryTitle: L10n.string("empty.outputs.go_to_studio"),
+                        primarySystemImage: "video"
+                    ) {
+                        onShowStudio()
+                    }
                 } else {
                     ForEach(clips) { clip in
                         outputCard(clip)

@@ -296,6 +296,59 @@ struct CurrentProjectBanner: View {
     }
 }
 
+
+struct GuidedEmptyState: View {
+    let systemImage: String
+    let title: String
+    let message: String
+    let primaryTitle: String
+    let primarySystemImage: String
+    var primaryAction: () -> Void
+    var secondaryTitle: String?
+    var secondarySystemImage: String = "questionmark.circle"
+    var secondaryAction: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: systemImage)
+                .font(.system(size: 38, weight: .semibold))
+                .foregroundStyle(PannotateTheme.Colors.accent)
+                .frame(width: 86, height: 86)
+                .background(PannotateTheme.Colors.accentSoft.opacity(0.62))
+                .clipShape(Circle())
+                .overlay(Circle().stroke(PannotateTheme.Colors.accent.opacity(0.24), lineWidth: 1))
+
+            VStack(spacing: 7) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 10) {
+                PrimaryActionButton(title: primaryTitle, systemImage: primarySystemImage) {
+                    primaryAction()
+                }
+
+                if let secondaryTitle, let secondaryAction {
+                    SecondaryActionButton(title: secondaryTitle, systemImage: secondarySystemImage) {
+                        secondaryAction()
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity)
+        .pannotateCard()
+    }
+}
+
 struct ProjectRequiredEmptyState: View {
     let title: String
     let message: String

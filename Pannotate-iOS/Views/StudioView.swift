@@ -543,19 +543,31 @@ struct StudioView: View {
                 .padding(14)
             } else {
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 14) {
                         Image(systemName: "photo.badge.plus")
                             .font(.system(size: 42, weight: .semibold))
                             .foregroundStyle(PannotateTheme.Colors.accent)
 
-                        Text("studio.select_image")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(PannotateTheme.Colors.primaryText)
+                        VStack(spacing: 6) {
+                            Text("empty.studio.no_image.title")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-                        Text("studio.choose_photo_hint")
-                            .font(PannotateTheme.Typography.metadata)
-                            .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                            Text("empty.studio.no_image.message")
+                                .font(PannotateTheme.Typography.metadata)
+                                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                                .multilineTextAlignment(.center)
+                        }
+
+                        Label("empty.studio.add_image", systemImage: "plus")
+                            .font(PannotateTheme.Typography.control)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 18)
+                            .frame(height: 42)
+                            .background(PannotateTheme.Colors.accent)
+                            .clipShape(Capsule())
                     }
+                    .padding(18)
                     .frame(maxWidth: .infinity)
                     .frame(height: 224)
                     .background(PannotateTheme.cardGradient)

@@ -94,6 +94,7 @@ struct RootTabView: View {
                     clips: currentOutputsBinding,
                     currentProject: currentProject,
                     onShowProjects: showProjectsTab,
+                    onShowStudio: showStudioTab,
                     onContinueClip: continueFromClip,
                     onAddToSequence: addToSequence
                 ) {
@@ -108,7 +109,7 @@ struct RootTabView: View {
             .tag(PannotateTab.outputs)
 
             NavigationStack {
-                SequenceView(clips: currentSequenceBinding, currentProject: currentProject, onShowProjects: showProjectsTab)
+                SequenceView(clips: currentSequenceBinding, currentProject: currentProject, onShowProjects: showProjectsTab, onShowOutputs: showOutputsTab)
             }
             .tabItem {
                 Label("tab.sequence", systemImage: "square.stack.3d.up")
@@ -180,6 +181,18 @@ struct RootTabView: View {
     private func showProjectsTab() {
         withAnimation(.easeInOut) {
             selectedTab = .projects
+        }
+    }
+
+    private func showStudioTab() {
+        withAnimation(.easeInOut) {
+            selectedTab = .studio
+        }
+    }
+
+    private func showOutputsTab() {
+        withAnimation(.easeInOut) {
+            selectedTab = .outputs
         }
     }
 

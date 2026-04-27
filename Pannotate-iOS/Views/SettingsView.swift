@@ -2,10 +2,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("appTheme") private var selectedThemeRawValue = AppTheme.dark.rawValue
+    @AppStorage("hasCompletedAuthWelcome") private var hasCompletedAuthWelcome = false
+    @AppStorage("authMode") private var authModeRawValue = AuthMode.guest.rawValue
     @State private var pushNotificationsEnabled = true
     @State private var outputQuality = "Standard"
     @State private var autoChainClips = false
     @State private var motionSmoothing = true
+    @State private var showSignOutConfirmation = false
 
     private let qualities = [
         ("Draft", "settings.quality.draft", "settings.quality.draft_subtitle"),
@@ -103,15 +106,29 @@ struct SettingsView: View {
 
                 settingsSection(L10n.string("settings.account")) {
                     VStack(spacing: 0) {
+                        accountModeRow
                         settingsLink(title: L10n.string("settings.subscription"), systemImage: "creditcard")
                         settingsLink(title: L10n.string("settings.privacy_data"), systemImage: "lock.shield")
                         settingsLink(title: L10n.string("settings.connected_accounts"), systemImage: "person.2")
+                        signOutButton
                     }
                     .pannotateCard()
                 }
 
                 settingsSection(L10n.string("settings.about")) {
                     VStack(spacing: 0) {
+                        NavigationLink {
+                            OnboardingGuideView(showSkipButton: false)
+                        } label: {
+                            settingsLinkContent(
+                                title: L10n.string("onboarding.help_title"),
+                                detail: L10n.string("onboarding.help_subtitle"),
+                                systemImage: "questionmark.circle"
+                            )
+                            .padding(16)
+                        }
+                        .buttonStyle(.plain)
+
                         settingsLink(title: L10n.string("app.name"), detail: L10n.string("settings.version_1"), systemImage: "bolt")
                         settingsLink(title: L10n.string("settings.terms"), systemImage: "doc.text")
                         settingsLink(title: L10n.string("settings.privacy_policy"), systemImage: "hand.raised")
@@ -127,6 +144,88 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(PannotateTheme.Colors.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .alert(L10n.string("auth.sign_out_confirmation_title"), isPresented: $showSignOutConfirmation) {
+            Button("settings.sign_out", role: .destructive) {
+                signOut()
+            }
+            Button("common.cancel", role: .cancel) {}
+        } message: {
+            Text("auth.sign_out_confirmation_message")
+        }
+    }
+
+
+    private var accountModeRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "person.crop.circle")
+                .font(.headline)
+                .foregroundStyle(PannotateTheme.Colors.accent)
+                .frame(width: 38, height: 38)
+                .background(PannotateTheme.Colors.accentSoft.opacity(0.5))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("auth.account_mode")
+                    .font(PannotateTheme.Typography.cardTitle)
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                Text(authModeTitle)
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+            }
+
+            Spacer()
+
+            Text(authModeTitle)
+                .font(PannotateTheme.Typography.label)
+                .foregroundStyle(PannotateTheme.Colors.accent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(PannotateTheme.Colors.accentSoft.opacity(0.5))
+                .clipShape(Capsule())
+        }
+        .padding(16)
+    }
+
+    private var signOutButton: some View {
+        Button(role: .destructive) {
+            showSignOutConfirmation = true
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.headline)
+                    .foregroundStyle(Color.red)
+                    .frame(width: 38, height: 38)
+                    .background(Color.red.opacity(0.12))
+                    .clipShape(Circle())
+
+                Text("settings.sign_out")
+                    .font(PannotateTheme.Typography.cardTitle)
+                    .foregroundStyle(Color.red)
+
+                Spacer()
+            }
+            .padding(16)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var authModeTitle: String {
+        switch AuthMode(rawValue: authModeRawValue) ?? .guest {
+        case .guest:
+            L10n.string("auth.guest_mode")
+        case .appleMock:
+            L10n.string("auth.apple_mock_mode")
+        case .googleMock:
+            L10n.string("auth.google_mock_mode")
+        case .emailMock:
+            L10n.string("auth.email_mock_mode")
+        }
+    }
+
+    private func signOut() {
+        authModeRawValue = AuthMode.guest.rawValue
+        hasCompletedAuthWelcome = false
     }
 
     private var selectedTheme: AppTheme {

@@ -4,6 +4,7 @@ struct SequenceView: View {
     @Binding var clips: [SequenceClip]
     let currentProject: Project?
     var onShowProjects: () -> Void = {}
+    var onShowOutputs: () -> Void = {}
 
     private let bottomActionSpacerHeight: CGFloat = 112
     private let actionFadeHeight: CGFloat = 46
@@ -129,7 +130,7 @@ struct SequenceView: View {
                 .sequenceListRow()
 
             if clips.isEmpty {
-                emptySequenceState
+                sequenceGuidedEmptyState
                     .sequenceListRow()
             } else {
                 ForEach(clips) { clip in
@@ -243,7 +244,6 @@ struct SequenceView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PannotateTheme.Colors.background)
     }
 
     private func sequenceRow(_ clip: SequenceClip) -> some View {
@@ -282,8 +282,8 @@ struct SequenceView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PannotateTheme.Colors.background)
         .pannotateCard()
+        .contentShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.cardRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(isEditing ? PannotateTheme.Colors.accent.opacity(0.24) : .clear, lineWidth: 1)
@@ -346,6 +346,19 @@ struct SequenceView: View {
         .buttonStyle(.plain)
         .disabled(isEditing)
         .opacity(isEditing ? 0.55 : 1)
+    }
+
+
+    private var sequenceGuidedEmptyState: some View {
+        GuidedEmptyState(
+            systemImage: "square.stack.3d.up.slash",
+            title: L10n.string("empty.sequence.title"),
+            message: L10n.string("empty.sequence.message"),
+            primaryTitle: L10n.string("empty.sequence.go_to_outputs"),
+            primarySystemImage: "film"
+        ) {
+            onShowOutputs()
+        }
     }
 
     private var emptySequenceState: some View {
@@ -429,7 +442,7 @@ private extension View {
     func sequenceListRow() -> some View {
         self
             .listRowSeparator(.hidden)
-            .listRowBackground(PannotateTheme.Colors.background)
+            .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(
                 top: 6,
                 leading: PannotateTheme.Metrics.pagePadding,
