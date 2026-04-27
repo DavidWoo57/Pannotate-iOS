@@ -1,7 +1,20 @@
 import SwiftUI
 
+struct ProfileStats {
+    let projectCount: Int
+    let clipCount: Int
+    let exportCount: Int
+
+    static let preview = ProfileStats(
+        projectCount: MockPannotateData.profile.projectCount,
+        clipCount: MockPannotateData.profile.clipCount,
+        exportCount: 0
+    )
+}
+
 struct ProfileView: View {
     var developerToolsActions: DeveloperToolsActions = .preview
+    var stats: ProfileStats = .preview
 
     private let profile = MockPannotateData.profile
     private let activity = MockPannotateData.activity
@@ -108,9 +121,9 @@ struct ProfileView: View {
 
     private var statsGrid: some View {
         HStack(spacing: 12) {
-            statCard(title: L10n.string("tab.projects"), value: profile.projectCount, systemImage: "folder")
-            statCard(title: L10n.string("profile.clips"), value: profile.clipCount, systemImage: "film")
-            statCard(title: L10n.string("profile.exports"), value: profile.exportCount, systemImage: "square.stack.3d.up")
+            statCard(title: L10n.string("tab.projects"), value: stats.projectCount, systemImage: "folder")
+            statCard(title: L10n.string("profile.clips"), value: stats.clipCount, systemImage: "film")
+            statCard(title: L10n.string("profile.exports"), value: stats.exportCount, systemImage: "square.stack.3d.up")
         }
     }
 

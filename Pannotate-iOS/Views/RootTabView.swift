@@ -119,7 +119,7 @@ struct RootTabView: View {
             .tag(PannotateTab.sequence)
 
             NavigationStack {
-                ProfileView(developerToolsActions: developerToolsActions)
+                ProfileView(developerToolsActions: developerToolsActions, stats: profileStats)
             }
             .tabItem {
                 Label("tab.profile", systemImage: "person")
@@ -146,6 +146,14 @@ struct RootTabView: View {
             addSampleProject: { _ = ensureDebugProject() },
             addSampleOutputs: addSampleOutputs,
             addFailedMockJob: addFailedMockJob
+        )
+    }
+
+    private var profileStats: ProfileStats {
+        ProfileStats(
+            projectCount: projects.count,
+            clipCount: outputsByProject.values.reduce(0) { $0 + $1.count },
+            exportCount: 0
         )
     }
 
