@@ -119,7 +119,11 @@ struct RootTabView: View {
             .tag(PannotateTab.sequence)
 
             NavigationStack {
-                ProfileView(developerToolsActions: developerToolsActions, stats: profileStats)
+                ProfileView(
+                    developerToolsActions: developerToolsActions,
+                    stats: profileStats,
+                    recentActivity: profileRecentActivity
+                )
             }
             .tabItem {
                 Label("tab.profile", systemImage: "person")
@@ -155,6 +159,21 @@ struct RootTabView: View {
             clipCount: outputsByProject.values.reduce(0) { $0 + $1.count },
             exportCount: 0
         )
+    }
+
+    private var profileRecentActivity: [ProfileActivityItem] {
+        outputsByProject.values
+            .flatMap { $0 }
+            .prefix(3)
+            .map { clip in
+                ProfileActivityItem(
+                    id: clip.id,
+                    title: clip.title,
+                    subtitle: activitySubtitle(for: clip),
+                    thumbnail: clip.thumbnail,
+                    image: clip.image
+                )
+            }
     }
 
     private var projectsBinding: Binding<[Project]> {
@@ -235,6 +254,11 @@ struct RootTabView: View {
             studioContinuationContext = nil
         }
         saveState()
+    }
+
+    private func activitySubtitle(for clip: GeneratedClip) -> String {
+        let status = clip.status.label
+        return "\(L10n.string("profile.generated_clip")) · \(status) · \(clip.createdAt)"
     }
 
     private func prepareProjectState(_ project: Project) {

@@ -928,6 +928,23 @@
         }
       }
     },
+    "common.coming_soon" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coming Soon"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即将支持"
+          }
+        }
+      }
+    },
     "common.confirm" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2526,6 +2543,9 @@
         }
       }
     },
+    "G" : {
+
+    },
     "generation.annotation_count" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3183,9 +3203,6 @@
           }
         }
       }
-    },
-    "JD" : {
-
     },
     "onboarding.get_started" : {
       "extractionState" : "stale",
@@ -3947,6 +3964,23 @@
         }
       }
     },
+    "profile.export_coming_soon" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export coming soon"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导出即将支持"
+          }
+        }
+      }
+    },
     "profile.exports" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3960,6 +3994,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "导出"
+          }
+        }
+      }
+    },
+    "profile.generated_clip" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generated clip"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已生成片段"
+          }
+        }
+      }
+    },
+    "profile.guest_user" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guest User"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "访客用户"
           }
         }
       }
@@ -3998,7 +4066,42 @@
         }
       }
     },
+    "profile.local_prototype" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Prototype"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本地原型"
+          }
+        }
+      }
+    },
+    "profile.mock_credits" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mock Credits"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模拟额度"
+          }
+        }
+      }
+    },
     "profile.monthly_credits" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4010,6 +4113,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每月额度"
+          }
+        }
+      }
+    },
+    "profile.no_recent_activity" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recent activity yet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无最近活动"
           }
         }
       }
@@ -4060,6 +4179,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "数据控制占位"
+          }
+        }
+      }
+    },
+    "profile.prototype_credits" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prototype Credits"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原型额度"
           }
         }
       }

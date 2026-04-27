@@ -12,12 +12,22 @@ struct ProfileStats {
     )
 }
 
+struct ProfileActivityItem: Identifiable {
+    let id: UUID
+    let title: String
+    let subtitle: String
+    let thumbnail: ThumbnailStyle
+    let image: UIImage?
+}
+
 struct ProfileView: View {
+    @AppStorage("authMode") private var authModeRawValue = AuthMode.guest.rawValue
+
     var developerToolsActions: DeveloperToolsActions = .preview
     var stats: ProfileStats = .preview
+    var recentActivity: [ProfileActivityItem] = []
 
     private let profile = MockPannotateData.profile
-    private let activity = MockPannotateData.activity
 
     var body: some View {
         FixedHeaderPage(bottomPadding: PannotateTheme.Metrics.tabBarContentInset + 12) {
@@ -45,12 +55,7 @@ struct ProfileView: View {
             VStack(spacing: 14) {
                 SectionLabel(title: L10n.string("profile.recent_activity"))
 
-                VStack(spacing: 0) {
-                    ForEach(activity) { item in
-                        activityRow(item)
-                    }
-                }
-                .pannotateCard()
+                recentActivityContent
             }
 
             settingsRow
@@ -66,21 +71,21 @@ struct ProfileView: View {
                     .fill(PannotateTheme.brandGradient)
                     .frame(width: 82, height: 82)
                     .overlay {
-                        Text("JD")
+                        Text("G")
                             .font(.title.weight(.bold))
                             .foregroundStyle(.white)
                     }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(profile.name)
+                    Text(profileDisplayName)
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-                    Text(profile.handle)
+                    Text(profileHandle)
                         .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
-                    Text(profile.plan)
+                    Text(profilePlan)
                         .font(PannotateTheme.Typography.metadataEmphasis)
                         .foregroundStyle(PannotateTheme.Colors.accent)
                         .padding(.horizontal, 14)
@@ -98,7 +103,7 @@ struct ProfileView: View {
 
             VStack(spacing: 10) {
                 HStack {
-                    Text("profile.monthly_credits")
+                    Text("profile.prototype_credits")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
 
@@ -146,20 +151,45 @@ struct ProfileView: View {
         .pannotateCard()
     }
 
-    private func activityRow(_ item: ActivityItem) -> some View {
+    @ViewBuilder
+    private var recentActivityContent: some View {
+        if recentActivity.isEmpty {
+            HStack(spacing: 12) {
+                Image(systemName: "clock.badge.questionmark")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(PannotateTheme.Colors.accent)
+                    .frame(width: 42, height: 42)
+                    .background(PannotateTheme.Colors.accentSoft.opacity(0.5))
+                    .clipShape(Circle())
+
+                Text("profile.no_recent_activity")
+                    .font(PannotateTheme.Typography.cardTitle)
+                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
+
+                Spacer()
+            }
+            .padding(16)
+            .pannotateCard()
+        } else {
+            VStack(spacing: 0) {
+                ForEach(recentActivity) { item in
+                    activityRow(item)
+                }
+            }
+            .pannotateCard()
+        }
+    }
+
+    private func activityRow(_ item: ProfileActivityItem) -> some View {
         HStack(spacing: 12) {
-            FixedMockThumbnail(
-                style: item.thumbnail,
-                size: CGSize(width: 62, height: 44),
-                cornerRadius: 12
-            )
+            activityThumbnail(item)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
                     .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-                Text(item.timeAgo)
+                Text(item.subtitle)
                     .font(PannotateTheme.Typography.metadata)
                     .foregroundStyle(PannotateTheme.Colors.tertiaryText)
             }
@@ -170,6 +200,35 @@ struct ProfileView: View {
                 .foregroundStyle(PannotateTheme.Colors.tertiaryText)
         }
         .padding(16)
+    }
+
+    private func activityThumbnail(_ item: ProfileActivityItem) -> some View {
+        Group {
+            if let image = item.image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                MockThumbnail(style: item.thumbnail, cornerRadius: 12)
+            }
+        }
+        .frame(width: 62, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var profileDisplayName: String {
+        switch AuthMode(rawValue: authModeRawValue) ?? .guest {
+        case .guest, .appleMock, .googleMock, .emailMock:
+            L10n.string("profile.guest_user")
+        }
+    }
+
+    private var profileHandle: String {
+        "@guest"
+    }
+
+    private var profilePlan: String {
+        L10n.string("profile.local_prototype")
     }
 
     private var settingsRow: some View {
