@@ -82,6 +82,20 @@ struct SettingsView: View {
                             systemImage: "waveform.path",
                             isOn: $motionSmoothing
                         )
+
+                        Divider()
+                            .overlay(PannotateTheme.Colors.border)
+
+                        NavigationLink {
+                            AIServicesSettingsView()
+                        } label: {
+                            settingsLinkContent(
+                                title: L10n.string("ai_services.title"),
+                                detail: L10n.string("ai_services.settings_subtitle"),
+                                systemImage: "cpu"
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(16)
                     .pannotateCard()
@@ -214,6 +228,11 @@ struct SettingsView: View {
     }
 
     private func settingsLink(title: String, detail: String? = nil, systemImage: String) -> some View {
+        settingsLinkContent(title: title, detail: detail, systemImage: systemImage)
+            .padding(16)
+    }
+
+    private func settingsLinkContent(title: String, detail: String? = nil, systemImage: String) -> some View {
         HStack(spacing: 14) {
             Image(systemName: systemImage)
                 .font(.headline)
@@ -239,7 +258,151 @@ struct SettingsView: View {
             Image(systemName: "chevron.right")
                 .foregroundStyle(PannotateTheme.Colors.tertiaryText)
         }
+    }
+}
+
+private struct AIServicesSettingsView: View {
+    @AppStorage("useMockAIServices") private var useMockServices = true
+    @State private var visualLLMAPIKey = ""
+    @State private var videoAPIKey = ""
+    @State private var showMockRequiredAlert = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                mockModeSection
+
+                serviceSection(
+                    title: L10n.string("ai_services.visual_understanding"),
+                    systemImage: "eye",
+                    description: L10n.string("ai_services.visual_understanding_description"),
+                    apiKeyTitle: L10n.string("ai_services.visual_llm_api_key"),
+                    apiKey: $visualLLMAPIKey
+                )
+
+                serviceSection(
+                    title: L10n.string("ai_services.video_generation"),
+                    systemImage: "play.rectangle",
+                    description: L10n.string("ai_services.video_generation_description"),
+                    apiKeyTitle: L10n.string("ai_services.video_api_key"),
+                    apiKey: $videoAPIKey
+                )
+
+                Text("ai_services.storage_note")
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(PannotateTheme.Metrics.pagePadding)
+            .padding(.bottom, 48)
+        }
+        .background(PannotateTheme.Colors.background.ignoresSafeArea())
+        .navigationTitle(L10n.string("ai_services.title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .alert(L10n.string("ai_services.mock_required_title"), isPresented: $showMockRequiredAlert) {
+            Button("common.ok", role: .cancel) {}
+        } message: {
+            Text("ai_services.mock_required_message")
+        }
+    }
+
+    private var mockModeSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Toggle(isOn: mockServicesBinding) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ai_services.use_mock_services")
+                        .font(PannotateTheme.Typography.cardTitle)
+                        .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                    Text("ai_services.real_api_later")
+                        .font(PannotateTheme.Typography.metadata)
+                        .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                }
+            }
+            .tint(PannotateTheme.Colors.accent)
+
+            statusPill(L10n.string("ai_services.mock_mode"), color: PannotateTheme.Colors.accent)
+        }
         .padding(16)
+        .pannotateCard()
+    }
+
+    private var mockServicesBinding: Binding<Bool> {
+        Binding {
+            useMockServices
+        } set: { newValue in
+            if newValue {
+                useMockServices = true
+            } else {
+                useMockServices = true
+                showMockRequiredAlert = true
+            }
+        }
+    }
+
+    private func serviceSection(
+        title: String,
+        systemImage: String,
+        description: String,
+        apiKeyTitle: String,
+        apiKey: Binding<String>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(PannotateTheme.Colors.accent)
+                    .frame(width: 42, height: 42)
+                    .background(PannotateTheme.Colors.accentSoft.opacity(0.58))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(PannotateTheme.Typography.cardTitle)
+                        .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                    Text(description)
+                        .font(PannotateTheme.Typography.metadata)
+                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                statusPill(L10n.string("ai_services.mock_mode"), color: PannotateTheme.Colors.accent)
+                statusPill(apiKey.wrappedValue.isEmpty ? L10n.string("ai_services.not_connected") : L10n.string("ai_services.ready_placeholder"), color: apiKey.wrappedValue.isEmpty ? PannotateTheme.Colors.tertiaryText : PannotateTheme.Colors.success)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(apiKeyTitle)
+                    .font(PannotateTheme.Typography.label)
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+                SecureField(L10n.string("ai_services.api_key_placeholder"), text: apiKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(PannotateTheme.Typography.metadataEmphasis)
+                    .padding(12)
+                    .background(PannotateTheme.Colors.background.opacity(0.72))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+                    )
+            }
+        }
+        .padding(16)
+        .pannotateCard()
+    }
+
+    private func statusPill(_ title: String, color: Color) -> some View {
+        Text(title)
+            .font(PannotateTheme.Typography.label)
+            .foregroundStyle(color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.14))
+            .clipShape(Capsule())
     }
 }
 

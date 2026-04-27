@@ -5,6 +5,10 @@ struct SequenceView: View {
     let currentProject: Project?
     var onShowProjects: () -> Void = {}
 
+    private let bottomActionSpacerHeight: CGFloat = 112
+    private let actionFadeHeight: CGFloat = 46
+    private let reorderAnimation = Animation.easeInOut(duration: 0.22)
+
     @State private var activeSheet: SequenceSheet?
     @State private var clipPendingRemoval: SequenceClip?
     @State private var showRemoveConfirmation = false
@@ -138,47 +142,32 @@ struct SequenceView: View {
 
             addClipPlaceholder
                 .sequenceListRow()
+
+            Color.clear
+                .frame(height: bottomActionSpacerHeight)
+                .accessibilityHidden(true)
+                .sequenceListRow()
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(PannotateTheme.Colors.background)
-        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: clips.map(\.id))
     }
 
     private var actionBar: some View {
-        HStack(spacing: 12) {
-            SecondaryActionButton(title: L10n.string("common.preview"), systemImage: "play") {
-                activeSheet = .preview
-            }
+        ZStack(alignment: .bottom) {
+            LinearGradient(
+                colors: [
+                    PannotateTheme.Colors.background.opacity(0.0),
+                    PannotateTheme.Colors.background.opacity(0.18),
+                    PannotateTheme.Colors.background.opacity(0.72),
+                    PannotateTheme.Colors.background.opacity(0.98)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: actionFadeHeight + PannotateTheme.Metrics.buttonHeight + 24)
+            .allowsHitTesting(false)
 
-            Button {
-                exportMockSequence()
-            } label: {
-                HStack(spacing: 10) {
-                    if isExporting {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "square.and.arrow.down")
-                    }
-
-                    Text(isExporting ? L10n.string("sequence.exporting") : L10n.string("common.export"))
-                }
-                .font(PannotateTheme.Typography.control)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: PannotateTheme.Metrics.buttonHeight)
-                .background(isExporting ? PannotateTheme.Colors.accent.opacity(0.72) : PannotateTheme.Colors.accent)
-                .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-                .shadow(color: PannotateTheme.Colors.accent.opacity(0.32), radius: 18, y: 8)
-            }
-            .buttonStyle(.plain)
-            .disabled(isExporting)
-        }
-        .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
-        .background(
             LinearGradient(
                 colors: [
                     PannotateTheme.Colors.background.opacity(0.0),
@@ -188,7 +177,43 @@ struct SequenceView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-        )
+            .frame(height: PannotateTheme.Metrics.buttonHeight + 42)
+            .allowsHitTesting(false)
+
+            HStack(spacing: 12) {
+                SecondaryActionButton(title: L10n.string("common.preview"), systemImage: "play") {
+                    activeSheet = .preview
+                }
+
+                Button {
+                    exportMockSequence()
+                } label: {
+                    HStack(spacing: 10) {
+                        if isExporting {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "square.and.arrow.down")
+                        }
+
+                        Text(isExporting ? L10n.string("sequence.exporting") : L10n.string("common.export"))
+                    }
+                    .font(PannotateTheme.Typography.control)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: PannotateTheme.Metrics.buttonHeight)
+                    .background(isExporting ? PannotateTheme.Colors.accent.opacity(0.72) : PannotateTheme.Colors.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                    .shadow(color: PannotateTheme.Colors.accent.opacity(0.32), radius: 18, y: 8)
+                }
+                .buttonStyle(.plain)
+                .disabled(isExporting)
+            }
+            .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
+        }
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private func exportMockSequence() {
@@ -217,6 +242,8 @@ struct SequenceView: View {
                     .padding(.top, -2)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PannotateTheme.Colors.background)
     }
 
     private func sequenceRow(_ clip: SequenceClip) -> some View {
@@ -254,6 +281,8 @@ struct SequenceView: View {
             sequenceMenu(clip)
         }
         .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PannotateTheme.Colors.background)
         .pannotateCard()
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -360,21 +389,21 @@ struct SequenceView: View {
         let targetIndex = currentIndex + offset
         guard clips.indices.contains(targetIndex) else { return }
 
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+        withAnimation(reorderAnimation) {
             clips.swapAt(currentIndex, targetIndex)
             normalizeOrders()
         }
     }
 
     private func moveClips(from source: IndexSet, to destination: Int) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+        withAnimation(reorderAnimation) {
             clips.move(fromOffsets: source, toOffset: destination)
             normalizeOrders()
         }
     }
 
     private func remove(_ clip: SequenceClip) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+        withAnimation(reorderAnimation) {
             clips.removeAll { $0.id == clip.id }
             normalizeOrders()
         }
@@ -400,7 +429,7 @@ private extension View {
     func sequenceListRow() -> some View {
         self
             .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
+            .listRowBackground(PannotateTheme.Colors.background)
             .listRowInsets(EdgeInsets(
                 top: 6,
                 leading: PannotateTheme.Metrics.pagePadding,
