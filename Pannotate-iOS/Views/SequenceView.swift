@@ -3,11 +3,11 @@ import SwiftUI
 struct SequenceView: View {
     @Binding var clips: [SequenceClip]
     let currentProject: Project?
+    var isEmbeddedInWorkspace = false
     var onShowProjects: () -> Void = {}
     var onShowOutputs: () -> Void = {}
 
-    private let bottomActionSpacerHeight: CGFloat = 112
-    private let actionFadeHeight: CGFloat = 46
+    private let actionFadeHeight: CGFloat = 24
     private let reorderAnimation = Animation.easeInOut(duration: 0.22)
 
     @State private var activeSheet: SequenceSheet?
@@ -19,7 +19,9 @@ struct SequenceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            if isEmbeddedInWorkspace == false {
+                header
+            }
 
             if let currentProject {
                 sequenceList(currentProject)
@@ -105,6 +107,10 @@ struct SequenceView: View {
         editMode.isEditing
     }
 
+    private var bottomActionSpacerHeight: CGFloat {
+        isEmbeddedInWorkspace ? 0 : 112
+    }
+
     private var sequenceSubtitle: String {
         guard let currentProject else {
             return L10n.string("common.select_project_first")
@@ -126,8 +132,10 @@ struct SequenceView: View {
 
     private func sequenceList(_ currentProject: Project) -> some View {
         List {
-            CurrentProjectBanner(prefix: L10n.string("sequence.for_project"), project: currentProject)
-                .sequenceListRow()
+            if isEmbeddedInWorkspace == false {
+                CurrentProjectBanner(prefix: L10n.string("sequence.for_project"), project: currentProject)
+                    .sequenceListRow()
+            }
 
             if clips.isEmpty {
                 sequenceGuidedEmptyState
@@ -144,10 +152,12 @@ struct SequenceView: View {
             addClipPlaceholder
                 .sequenceListRow()
 
-            Color.clear
-                .frame(height: bottomActionSpacerHeight)
-                .accessibilityHidden(true)
-                .sequenceListRow()
+            if bottomActionSpacerHeight > 0 {
+                Color.clear
+                    .frame(height: bottomActionSpacerHeight)
+                    .accessibilityHidden(true)
+                    .sequenceListRow()
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -155,30 +165,17 @@ struct SequenceView: View {
     }
 
     private var actionBar: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
             LinearGradient(
                 colors: [
                     PannotateTheme.Colors.background.opacity(0.0),
-                    PannotateTheme.Colors.background.opacity(0.18),
-                    PannotateTheme.Colors.background.opacity(0.72),
-                    PannotateTheme.Colors.background.opacity(0.98)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: actionFadeHeight + PannotateTheme.Metrics.buttonHeight + 24)
-            .allowsHitTesting(false)
-
-            LinearGradient(
-                colors: [
-                    PannotateTheme.Colors.background.opacity(0.0),
-                    PannotateTheme.Colors.background.opacity(0.96),
+                    PannotateTheme.Colors.background.opacity(0.62),
                     PannotateTheme.Colors.background
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: PannotateTheme.Metrics.buttonHeight + 42)
+            .frame(height: actionFadeHeight)
             .allowsHitTesting(false)
 
             HStack(spacing: 12) {
@@ -211,10 +208,10 @@ struct SequenceView: View {
                 .disabled(isExporting)
             }
             .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
-            .padding(.top, 10)
-            .padding(.bottom, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background(PannotateTheme.Colors.background)
         }
-        .ignoresSafeArea(edges: .bottom)
     }
 
     private func exportMockSequence() {

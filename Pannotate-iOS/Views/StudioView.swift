@@ -26,6 +26,7 @@ struct StudioView: View {
     @State private var isApplyingPersistedState = false
 
     let currentProject: Project?
+    var isEmbeddedInWorkspace = false
     var continuationContext: StudioContinuationContext? = nil
     var persistedState: StudioProjectState? = nil
     var onShowProjects: () -> Void = {}
@@ -38,12 +39,16 @@ struct StudioView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            studioHeader
+            if isEmbeddedInWorkspace == false {
+                studioHeader
+            }
 
             if let currentProject {
                 ScrollView {
                     VStack(spacing: 16) {
-                        CurrentProjectBanner(prefix: L10n.string("studio.editing"), project: currentProject)
+                        if isEmbeddedInWorkspace == false {
+                            CurrentProjectBanner(prefix: L10n.string("studio.editing"), project: currentProject)
+                        }
 
                         if let continuationContext {
                             continuationBanner(continuationContext)
@@ -100,8 +105,8 @@ struct StudioView: View {
                         }
                     }
                     .padding(PannotateTheme.Metrics.pagePadding)
-                    .padding(.top, 12)
-                    .padding(.bottom, PannotateTheme.Metrics.tabBarContentInset)
+                    .padding(.top, isEmbeddedInWorkspace ? 10 : 12)
+                    .padding(.bottom, isEmbeddedInWorkspace ? 0 : PannotateTheme.Metrics.tabBarContentInset)
                 }
             } else {
                 ProjectRequiredEmptyState(

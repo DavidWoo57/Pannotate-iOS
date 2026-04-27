@@ -3,6 +3,7 @@ import SwiftUI
 struct OutputsView: View {
     @Binding var clips: [GeneratedClip]
     let currentProject: Project?
+    var isEmbeddedInWorkspace = false
     var onShowProjects: () -> Void = {}
     var onShowStudio: () -> Void = {}
     var onContinueClip: (GeneratedClip) -> Void = { _ in }
@@ -23,47 +24,7 @@ struct OutputsView: View {
     }
 
     var body: some View {
-        FixedHeaderPage {
-            PageTitle(title: L10n.string("tab.outputs"), subtitle: outputsSubtitle)
-        } content: {
-            if let currentProject {
-                CurrentProjectBanner(prefix: L10n.string("outputs.for_project"), project: currentProject)
-
-                if let confirmationMessage {
-                    Label(confirmationMessage, systemImage: "checkmark.circle.fill")
-                        .font(PannotateTheme.Typography.metadataEmphasis)
-                        .foregroundStyle(PannotateTheme.Colors.success)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .background(PannotateTheme.Colors.success.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                if clips.isEmpty {
-                    GuidedEmptyState(
-                        systemImage: "film.badge.plus",
-                        title: L10n.string("empty.outputs.title"),
-                        message: L10n.string("empty.outputs.message"),
-                        primaryTitle: L10n.string("empty.outputs.go_to_studio"),
-                        primarySystemImage: "video"
-                    ) {
-                        onShowStudio()
-                    }
-                } else {
-                    ForEach(clips) { clip in
-                        outputCard(clip)
-                    }
-                }
-            } else {
-                ProjectRequiredEmptyState(
-                    title: L10n.string("common.select_project_first"),
-                    message: L10n.string("outputs.no_project_message"),
-                    buttonTitle: L10n.string("common.go_to_projects"),
-                    action: onShowProjects
-                )
-            }
-        }
+        rootContent
         .sheet(item: $selectedClip) { clip in
             ClipPreviewPlaceholderSheet(clip: clip) {
                 onRetryClip(clip)
@@ -92,6 +53,70 @@ struct OutputsView: View {
             }
         } message: {
             Text("outputs.delete_clip_message")
+        }
+    }
+
+    @ViewBuilder
+    private var rootContent: some View {
+        if isEmbeddedInWorkspace {
+            ScrollView {
+                VStack(spacing: 16) {
+                    outputsContent
+                }
+                .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
+                .padding(.top, 10)
+                .padding(.bottom, 0)
+            }
+            .pannotatePage()
+        } else {
+            FixedHeaderPage {
+                PageTitle(title: L10n.string("tab.outputs"), subtitle: outputsSubtitle)
+            } content: {
+                outputsContent
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var outputsContent: some View {
+        if let currentProject {
+            if isEmbeddedInWorkspace == false {
+                CurrentProjectBanner(prefix: L10n.string("outputs.for_project"), project: currentProject)
+            }
+
+            if let confirmationMessage {
+                Label(confirmationMessage, systemImage: "checkmark.circle.fill")
+                    .font(PannotateTheme.Typography.metadataEmphasis)
+                    .foregroundStyle(PannotateTheme.Colors.success)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(PannotateTheme.Colors.success.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            if clips.isEmpty {
+                GuidedEmptyState(
+                    systemImage: "film.badge.plus",
+                    title: L10n.string("empty.outputs.title"),
+                    message: L10n.string("empty.outputs.message"),
+                    primaryTitle: L10n.string("empty.outputs.go_to_studio"),
+                    primarySystemImage: "video"
+                ) {
+                    onShowStudio()
+                }
+            } else {
+                ForEach(clips) { clip in
+                    outputCard(clip)
+                }
+            }
+        } else {
+            ProjectRequiredEmptyState(
+                title: L10n.string("common.select_project_first"),
+                message: L10n.string("outputs.no_project_message"),
+                buttonTitle: L10n.string("common.go_to_projects"),
+                action: onShowProjects
+            )
         }
     }
 

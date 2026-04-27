@@ -5,6 +5,7 @@ struct ProjectsView: View {
     @Binding var currentProjectID: UUID?
     var onProjectCreated: (Project) -> Void = { _ in }
     var onProjectDeleted: (Project) -> Void = { _ in }
+    var onOpenProject: (Project) -> Void = { _ in }
 
     @State private var isPresentingNewProject = false
     @State private var projectToRename: Project?
@@ -56,6 +57,7 @@ struct ProjectsView: View {
                 }
 
                 onProjectCreated(project)
+                onOpenProject(project)
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -116,14 +118,9 @@ struct ProjectsView: View {
         let isCurrent = project.id == currentProjectID
 
         return HStack(spacing: 14) {
-            NavigationLink {
-                ProjectDetailPlaceholderView(
-                    project: project,
-                    isCurrent: isCurrent,
-                    onRename: { projectToRename = project },
-                    onSelect: { currentProjectID = project.id },
-                    onDelete: { delete(project) }
-                )
+            Button {
+                currentProjectID = project.id
+                onOpenProject(project)
             } label: {
                 HStack(spacing: 14) {
                     FixedMockThumbnail(
@@ -157,9 +154,6 @@ struct ProjectsView: View {
                 }
             }
             .buttonStyle(.plain)
-            .simultaneousGesture(TapGesture().onEnded {
-                currentProjectID = project.id
-            })
 
             projectMenu(project)
         }
@@ -322,110 +316,6 @@ private struct NewProjectSheet: View {
                 }
             }
         }
-    }
-}
-
-private struct ProjectDetailPlaceholderView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var showDeleteConfirmation = false
-    @State private var showViewClipsPlaceholder = false
-    let project: Project
-    let isCurrent: Bool
-    var onRename: () -> Void = {}
-    var onSelect: () -> Void = {}
-    var onDelete: () -> Void = {}
-
-    var body: some View {
-        VStack(spacing: 18) {
-            MockThumbnail(style: project.thumbnail, cornerRadius: 26)
-                .frame(height: 220)
-
-            Text(project.title)
-                .font(.largeTitle.weight(.semibold))
-                .foregroundStyle(PannotateTheme.Colors.primaryText)
-
-            Text(projectClipMetadata(project))
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(PannotateTheme.Colors.secondaryText)
-
-            Text("projects.detail_placeholder")
-                .font(PannotateTheme.Typography.cardTitle)
-                .foregroundStyle(PannotateTheme.Colors.accent)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(PannotateTheme.Colors.accentSoft.opacity(0.58))
-                .clipShape(Capsule())
-
-            VStack(spacing: 12) {
-                if isCurrent {
-                    Label("projects.current_project", systemImage: "checkmark.circle.fill")
-                        .font(PannotateTheme.Typography.cardTitle)
-                        .foregroundStyle(PannotateTheme.Colors.accent)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(PannotateTheme.Colors.accentSoft.opacity(0.58))
-                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-                } else {
-                    PrimaryActionButton(title: L10n.string("projects.make_current"), systemImage: "checkmark.circle") {
-                        onSelect()
-                    }
-                }
-
-                SecondaryActionButton(title: L10n.string("common.rename"), systemImage: "pencil") {
-                    onRename()
-                }
-
-                SecondaryActionButton(title: L10n.string("projects.view_clips"), systemImage: "film") {
-                    showViewClipsPlaceholder = true
-                }
-
-                Button(role: .destructive) {
-                    showDeleteConfirmation = true
-                } label: {
-                    Label("common.delete", systemImage: "trash")
-                        .font(PannotateTheme.Typography.cardTitle)
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(PannotateTheme.Colors.cardMuted)
-                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
-                                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-
-            Spacer()
-        }
-        .padding(PannotateTheme.Metrics.pagePadding)
-        .background(PannotateTheme.Colors.background.ignoresSafeArea())
-        .navigationTitle(project.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .alert(L10n.string("projects.project_clips"), isPresented: $showViewClipsPlaceholder) {
-            Button("common.ok", role: .cancel) {}
-        } message: {
-            Text("projects.project_clips_message")
-        }
-        .alert(L10n.string("projects.delete_project_question"), isPresented: $showDeleteConfirmation) {
-            Button("common.delete", role: .destructive) {
-                onDelete()
-                dismiss()
-            }
-
-            Button("common.cancel", role: .cancel) {}
-        } message: {
-            Text("projects.delete_project_message")
-        }
-    }
-
-    private func projectClipMetadata(_ project: Project) -> String {
-        String.localizedStringWithFormat(
-            L10n.string("projects.clip_metadata_format"),
-            project.clipCount,
-            project.updatedAt
-        )
     }
 }
 

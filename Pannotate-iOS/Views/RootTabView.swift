@@ -2,14 +2,12 @@ import SwiftUI
 
 enum PannotateTab {
     case projects
-    case studio
-    case outputs
-    case sequence
     case profile
 }
 
 struct RootTabView: View {
     @State private var selectedTab: PannotateTab = .projects
+    @State private var projectNavigationPath: [UUID] = []
     @State private var projects: [Project]
     @State private var currentProjectID: UUID?
     @State private var outputsByProject: [UUID: [GeneratedClip]]
@@ -44,79 +42,56 @@ struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack {
+            NavigationStack(path: $projectNavigationPath) {
                 ProjectsView(
                     projects: projectsBinding,
                     currentProjectID: currentProjectIDBinding,
                     onProjectCreated: prepareProjectState,
-                    onProjectDeleted: handleProjectDeleted
+                    onProjectDeleted: handleProjectDeleted,
+                    onOpenProject: openProjectWorkspace
                 )
+                .navigationDestination(for: UUID.self) { projectID in
+                    if let project = project(for: projectID) {
+                        ProjectWorkspaceView(
+                            project: project,
+                            outputs: outputsBinding(for: projectID),
+                            sequenceClips: sequenceBinding(for: projectID),
+                            studioState: studioStateByProject[projectID],
+                            continuationContext: studioContinuationContext,
+                            onShowProjects: closeProjectWorkspace,
+                            onGeneratedClip: { clip in
+                                upsertOutputClip(clip, projectID: projectID)
+                            },
+                            onStudioStateChanged: { state in
+                                studioStateByProject[projectID] = state
+                                saveState()
+                            },
+                            onClearContinuation: clearContinuation,
+                            onContinueClip: beginContinuation,
+                            onAddToSequence: { clip in
+                                addToSequence(clip, projectID: projectID)
+                            },
+                            onRetryClip: { clip in
+                                retryGeneration(clip, projectID: projectID)
+                            },
+                            onRenameProject: renameProject,
+                            onDuplicateProject: duplicateProject,
+                            onDeleteProject: deleteProjectFromWorkspace
+                        )
+                    } else {
+                        ProjectRequiredEmptyState(
+                            title: L10n.string("workspace.open_project_first"),
+                            message: L10n.string("studio.no_project_message"),
+                            buttonTitle: L10n.string("common.go_to_projects"),
+                            action: closeProjectWorkspace
+                        )
+                    }
+                }
             }
             .tabItem {
                 Label("tab.projects", systemImage: "house")
             }
             .tag(PannotateTab.projects)
-
-            NavigationStack {
-                StudioView(
-                    currentProject: currentProject,
-                    continuationContext: studioContinuationContext,
-                    persistedState: currentStudioState,
-                    onShowProjects: showProjectsTab,
-                    onClearContinuation: clearContinuation
-                ) { clip in
-                    guard let currentProjectID else { return }
-
-                    var clips = outputsByProject[currentProjectID, default: []]
-                    if let index = clips.firstIndex(where: { $0.id == clip.id }) {
-                        clips[index] = clip
-                    } else {
-                        clips.insert(clip, at: 0)
-                    }
-                    outputsByProject[currentProjectID] = clips
-                    saveState()
-
-                    withAnimation(.easeInOut) {
-                        selectedTab = .outputs
-                    }
-                } onStudioStateChanged: { state in
-                    guard let currentProjectID else { return }
-                    studioStateByProject[currentProjectID] = state
-                    saveState()
-                }
-            }
-            .tabItem {
-                Label("tab.studio", systemImage: "video")
-            }
-            .tag(PannotateTab.studio)
-
-            NavigationStack {
-                OutputsView(
-                    clips: currentOutputsBinding,
-                    currentProject: currentProject,
-                    onShowProjects: showProjectsTab,
-                    onShowStudio: showStudioTab,
-                    onContinueClip: continueFromClip,
-                    onAddToSequence: addToSequence,
-                    onRetryClip: retryGeneration
-                ) {
-                    withAnimation(.easeInOut) {
-                        selectedTab = .sequence
-                    }
-                }
-            }
-            .tabItem {
-                Label("tab.outputs", systemImage: "film")
-            }
-            .tag(PannotateTab.outputs)
-
-            NavigationStack {
-                SequenceView(clips: currentSequenceBinding, currentProject: currentProject, onShowProjects: showProjectsTab, onShowOutputs: showOutputsTab)
-            }
-            .tabItem {
-                Label("tab.sequence", systemImage: "square.stack.3d.up")
-            }
-            .tag(PannotateTab.sequence)
 
             NavigationStack {
                 ProfileView(
@@ -135,12 +110,7 @@ struct RootTabView: View {
 
     private var currentProject: Project? {
         guard let currentProjectID else { return nil }
-        return projects.first { $0.id == currentProjectID }
-    }
-
-    private var currentStudioState: StudioProjectState? {
-        guard let currentProjectID else { return nil }
-        return studioStateByProject[currentProjectID]
+        return project(for: currentProjectID)
     }
 
     private var developerToolsActions: DeveloperToolsActions {
@@ -194,48 +164,46 @@ struct RootTabView: View {
         }
     }
 
-    private var currentOutputsBinding: Binding<[GeneratedClip]> {
+    private func project(for id: UUID) -> Project? {
+        projects.first { $0.id == id }
+    }
+
+    private func outputsBinding(for projectID: UUID) -> Binding<[GeneratedClip]> {
         Binding {
-            guard let currentProjectID else { return [] }
-            return outputsByProject[currentProjectID, default: []]
+            outputsByProject[projectID, default: []]
         } set: { newValue in
-            guard let currentProjectID else { return }
-            removeSequenceClipsForDeletedOutputs(oldOutputs: outputsByProject[currentProjectID, default: []], newOutputs: newValue, projectID: currentProjectID)
-            outputsByProject[currentProjectID] = newValue
+            removeSequenceClipsForDeletedOutputs(oldOutputs: outputsByProject[projectID, default: []], newOutputs: newValue, projectID: projectID)
+            outputsByProject[projectID] = newValue
             saveState()
         }
     }
 
-    private var currentSequenceBinding: Binding<[SequenceClip]> {
+    private func sequenceBinding(for projectID: UUID) -> Binding<[SequenceClip]> {
         Binding {
-            guard let currentProjectID else { return [] }
-            return sequenceClipsByProject[currentProjectID, default: []]
+            sequenceClipsByProject[projectID, default: []]
         } set: { newValue in
-            guard let currentProjectID else { return }
-            sequenceClipsByProject[currentProjectID] = newValue
+            sequenceClipsByProject[projectID] = newValue
             saveState()
         }
     }
 
-    private func showProjectsTab() {
+    private func openProjectWorkspace(_ project: Project) {
+        currentProjectID = project.id
+        prepareProjectState(project)
         withAnimation(.easeInOut) {
             selectedTab = .projects
+            projectNavigationPath = [project.id]
         }
     }
 
-    private func showStudioTab() {
+    private func closeProjectWorkspace() {
         withAnimation(.easeInOut) {
-            selectedTab = .studio
+            selectedTab = .projects
+            projectNavigationPath = []
         }
     }
 
-    private func showOutputsTab() {
-        withAnimation(.easeInOut) {
-            selectedTab = .outputs
-        }
-    }
-
-    private func continueFromClip(_ clip: GeneratedClip) {
+    private func beginContinuation(_ clip: GeneratedClip) {
         studioContinuationContext = StudioContinuationContext(
             id: clip.id,
             title: clip.title,
@@ -243,10 +211,6 @@ struct RootTabView: View {
             image: clip.image
         )
         saveState()
-
-        withAnimation(.easeInOut) {
-            selectedTab = .studio
-        }
     }
 
     private func clearContinuation() {
@@ -282,12 +246,52 @@ struct RootTabView: View {
         sequenceClipsByProject[project.id] = nil
         studioStateByProject[project.id] = nil
         studioContinuationContext = nil
+        projectNavigationPath.removeAll { $0 == project.id }
 
         if currentProjectID == project.id {
             currentProjectID = projects.first?.id
         }
 
         saveState()
+    }
+
+    private func renameProject(_ project: Project, to newName: String) {
+        let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedName.isEmpty == false,
+              let index = projects.firstIndex(where: { $0.id == project.id }) else { return }
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            projects[index] = Project(
+                id: project.id,
+                title: trimmedName,
+                clipCount: project.clipCount,
+                updatedAt: L10n.string("common.just_now"),
+                thumbnail: project.thumbnail
+            )
+        }
+        saveState()
+    }
+
+    private func duplicateProject(_ project: Project) {
+        let copy = Project(
+            title: String.localizedStringWithFormat(L10n.string("projects.copy_format"), project.title),
+            clipCount: project.clipCount,
+            updatedAt: L10n.string("common.just_now"),
+            thumbnail: project.thumbnail
+        )
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            projects.insert(copy, at: 0)
+        }
+        prepareProjectState(copy)
+    }
+
+    private func deleteProjectFromWorkspace(_ project: Project) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            projects.removeAll { $0.id == project.id }
+            projectNavigationPath = []
+        }
+        handleProjectDeleted(project)
     }
 
     @discardableResult
@@ -383,10 +387,8 @@ struct RootTabView: View {
         saveState()
     }
 
-    private func addToSequence(_ clip: GeneratedClip) -> Bool {
-        guard let currentProjectID else { return false }
-
-        var sequenceClips = sequenceClipsByProject[currentProjectID, default: []]
+    private func addToSequence(_ clip: GeneratedClip, projectID: UUID) -> Bool {
+        var sequenceClips = sequenceClipsByProject[projectID, default: []]
         guard sequenceClips.contains(where: { $0.sourceOutputClipID == clip.id || ($0.sourceOutputClipID == nil && $0.title == clip.title) }) == false else {
             return false
         }
@@ -403,22 +405,20 @@ struct RootTabView: View {
 
         withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
             sequenceClips.append(sequenceClip)
-            sequenceClipsByProject[currentProjectID] = sequenceClips
+            sequenceClipsByProject[projectID] = sequenceClips
         }
 
         saveState()
         return true
     }
 
-    private func retryGeneration(_ clip: GeneratedClip) {
-        guard let currentProjectID else { return }
-
+    private func retryGeneration(_ clip: GeneratedClip, projectID: UUID) {
         Task {
             var job = await videoGenerationService.submitRetry(for: clip)
             await MainActor.run {
                 upsertOutputClip(
                     videoGenerationService.retryOutputClip(for: job, failedClip: clip, status: job.status),
-                    projectID: currentProjectID
+                    projectID: projectID
                 )
             }
 
@@ -429,7 +429,7 @@ struct RootTabView: View {
                 await MainActor.run {
                     upsertOutputClip(
                         videoGenerationService.retryOutputClip(for: job, failedClip: clip, status: status),
-                        projectID: currentProjectID
+                        projectID: projectID
                     )
                 }
 
