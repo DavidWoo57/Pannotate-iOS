@@ -7,6 +7,46 @@ struct PersistedAppState: Codable {
     var sequenceClipsByProject: [UUID: [SequenceClip]]
     var studioStateByProject: [UUID: StudioProjectState]
     var studioContinuationContext: StudioContinuationContext?
+    var activityByProject: [UUID: [ProjectActivityItem]]
+
+    private enum CodingKeys: String, CodingKey {
+        case projects
+        case currentProjectID
+        case outputsByProject
+        case sequenceClipsByProject
+        case studioStateByProject
+        case studioContinuationContext
+        case activityByProject
+    }
+
+    init(
+        projects: [Project],
+        currentProjectID: UUID?,
+        outputsByProject: [UUID: [GeneratedClip]],
+        sequenceClipsByProject: [UUID: [SequenceClip]],
+        studioStateByProject: [UUID: StudioProjectState],
+        studioContinuationContext: StudioContinuationContext?,
+        activityByProject: [UUID: [ProjectActivityItem]] = [:]
+    ) {
+        self.projects = projects
+        self.currentProjectID = currentProjectID
+        self.outputsByProject = outputsByProject
+        self.sequenceClipsByProject = sequenceClipsByProject
+        self.studioStateByProject = studioStateByProject
+        self.studioContinuationContext = studioContinuationContext
+        self.activityByProject = activityByProject
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        projects = try container.decode([Project].self, forKey: .projects)
+        currentProjectID = try container.decodeIfPresent(UUID.self, forKey: .currentProjectID)
+        outputsByProject = try container.decode([UUID: [GeneratedClip]].self, forKey: .outputsByProject)
+        sequenceClipsByProject = try container.decode([UUID: [SequenceClip]].self, forKey: .sequenceClipsByProject)
+        studioStateByProject = try container.decode([UUID: StudioProjectState].self, forKey: .studioStateByProject)
+        studioContinuationContext = try container.decodeIfPresent(StudioContinuationContext.self, forKey: .studioContinuationContext)
+        activityByProject = try container.decodeIfPresent([UUID: [ProjectActivityItem]].self, forKey: .activityByProject) ?? [:]
+    }
 }
 
 enum AppStateStore {

@@ -3,7 +3,11 @@ import SwiftUI
 struct ProjectsView: View {
     @Binding var projects: [Project]
     @Binding var currentProjectID: UUID?
+    var projectCover: (Project) -> ProjectCoverSource = { ProjectCoverSource(thumbnail: $0.thumbnail, image: nil) }
+    var projectOutputCount: (Project) -> Int = { $0.clipCount }
     var onProjectCreated: (Project) -> Void = { _ in }
+    var onProjectRenamed: (Project, String) -> Void = { _, _ in }
+    var onProjectDuplicated: (Project, Project) -> Void = { _, _ in }
     var onProjectDeleted: (Project) -> Void = { _ in }
     var onOpenProject: (Project) -> Void = { _ in }
 
@@ -123,8 +127,8 @@ struct ProjectsView: View {
                 onOpenProject(project)
             } label: {
                 HStack(spacing: 14) {
-                    FixedMockThumbnail(
-                        style: project.thumbnail,
+                    ProjectCoverThumbnail(
+                        cover: projectCover(project),
                         size: CGSize(width: 96, height: 68),
                         cornerRadius: 18
                     )
@@ -196,7 +200,7 @@ struct ProjectsView: View {
     private func projectClipMetadata(_ project: Project) -> String {
         String.localizedStringWithFormat(
             L10n.string("projects.clip_metadata_format"),
-            project.clipCount,
+            projectOutputCount(project),
             project.updatedAt
         )
     }
@@ -212,9 +216,13 @@ struct ProjectsView: View {
                 title: trimmedName,
                 clipCount: project.clipCount,
                 updatedAt: L10n.string("common.just_now"),
-                thumbnail: project.thumbnail
+                thumbnail: project.thumbnail,
+                description: project.description,
+                createdAt: project.createdAt,
+                updatedAtDate: Date()
             )
         }
+        onProjectRenamed(project, trimmedName)
     }
 
     private func duplicate(_ project: Project) {
@@ -222,14 +230,15 @@ struct ProjectsView: View {
             title: String.localizedStringWithFormat(L10n.string("projects.copy_format"), project.title),
             clipCount: project.clipCount,
             updatedAt: L10n.string("common.just_now"),
-            thumbnail: project.thumbnail
+            thumbnail: project.thumbnail,
+            description: project.description
         )
 
         withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
             projects.insert(copy, at: 0)
         }
 
-        onProjectCreated(copy)
+        onProjectDuplicated(project, copy)
     }
 
     private func confirmDelete(_ project: Project) {

@@ -6,6 +6,7 @@ struct ProjectWorkspaceView: View {
     let project: Project
     @Binding var outputs: [GeneratedClip]
     @Binding var sequenceClips: [SequenceClip]
+    let activities: [ProjectActivityItem]
     let studioState: StudioProjectState?
     let continuationContext: StudioContinuationContext?
     var onShowProjects: () -> Void = {}
@@ -16,11 +17,13 @@ struct ProjectWorkspaceView: View {
     var onAddToSequence: (GeneratedClip) -> Bool = { _ in false }
     var onRetryClip: (GeneratedClip) -> Void = { _ in }
     var onRenameProject: (Project, String) -> Void = { _, _ in }
+    var onUpdateProject: (Project, String, String) -> Void = { _, _, _ in }
     var onDuplicateProject: (Project) -> Void = { _ in }
     var onDeleteProject: (Project) -> Void = { _ in }
 
     @State private var selectedSection: ProjectWorkspaceSection = .overview
     @State private var projectToRename: Project?
+    @State private var isShowingProjectSettings = false
     @State private var showDeleteConfirmation = false
 
     var body: some View {
@@ -48,6 +51,24 @@ struct ProjectWorkspaceView: View {
             }
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isShowingProjectSettings) {
+            ProjectSettingsView(
+                project: project,
+                cover: projectCover,
+                outputCount: outputs.count,
+                sequenceClipCount: sequenceClips.count,
+                activityCount: activities.count,
+                onSave: { name, description in
+                    onUpdateProject(project, name, description)
+                },
+                onDuplicate: {
+                    onDuplicateProject(project)
+                },
+                onDelete: {
+                    onDeleteProject(project)
+                }
+            )
         }
         .alert(L10n.string("projects.delete_project_question"), isPresented: $showDeleteConfirmation) {
             Button("common.delete", role: .destructive) {
@@ -165,21 +186,21 @@ struct ProjectWorkspaceView: View {
     private var overview: some View {
         ScrollView {
             VStack(spacing: 16) {
-                overviewHero
-                statsGrid
-                primaryActions
+                projectSummaryCard
+                quickActionsSection
+                continueWorkingSection
                 recentOutputsSection
                 sequencePreviewSection
-                projectActionsSection
+                recentActivitySection
             }
             .padding(PannotateTheme.Metrics.pagePadding)
             .padding(.bottom, 10)
         }
     }
 
-    private var overviewHero: some View {
+    private var projectSummaryCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            MockThumbnail(style: project.thumbnail, cornerRadius: 24)
+            ProjectCoverThumbnail(cover: projectCover, cornerRadius: 24)
                 .frame(height: 174)
                 .overlay(alignment: .bottomLeading) {
                     LinearGradient(
@@ -197,74 +218,119 @@ struct ProjectWorkspaceView: View {
                             .foregroundStyle(.white)
                             .lineLimit(2)
 
-                        Text(String.localizedStringWithFormat(L10n.string("workspace.updated_format"), project.updatedAt))
+                        Text("\(L10n.string("project.last_updated")) \(formattedDate(project.updatedAtDate))")
                             .font(PannotateTheme.Typography.metadataEmphasis)
                             .foregroundStyle(.white.opacity(0.82))
                     }
                     .padding(16)
                 }
 
-            Text("workspace.overview_message")
+            Text(project.description.isEmpty ? L10n.string("project.no_description") : project.description)
                 .font(PannotateTheme.Typography.body)
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
+
+            HStack(spacing: 10) {
+                dashboardMetric(title: L10n.string("project.clips"), value: "\(outputs.count)", systemImage: "film")
+                dashboardMetric(title: L10n.string("project.sequence_clips"), value: "\(sequenceClips.count)", systemImage: "square.stack.3d.up")
+            }
+
+            Label("\(L10n.string("project.last_updated")) \(formattedDate(project.updatedAtDate))", systemImage: "clock")
+                .font(PannotateTheme.Typography.metadata)
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
         }
         .padding(12)
         .pannotateCard()
     }
 
-    private var statsGrid: some View {
-        HStack(spacing: 10) {
-            workspaceStat(title: L10n.string("tab.outputs"), value: "\(outputs.count)", systemImage: "film")
-            workspaceStat(title: L10n.string("tab.sequence"), value: "\(sequenceClips.count)", systemImage: "square.stack.3d.up")
-        }
-    }
-
-    private func workspaceStat(title: String, value: String, systemImage: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func dashboardMetric(title: String, value: String, systemImage: String) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.headline.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.accent)
-                .frame(width: 34, height: 34)
+                .frame(width: 28, height: 28)
                 .background(PannotateTheme.Colors.accentSoft.opacity(0.62))
                 .clipShape(Circle())
 
-            Text(value)
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(PannotateTheme.Colors.primaryText)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-            Text(title)
-                .font(PannotateTheme.Typography.metadata)
-                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                Text(title)
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .pannotateCard()
+        .padding(10)
+        .background(PannotateTheme.Colors.cardMuted)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private var primaryActions: some View {
-        VStack(spacing: 10) {
+    private var quickActionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(title: L10n.string("workspace.quick_actions"))
+
             PrimaryActionButton(
                 title: outputs.isEmpty ? L10n.string("workspace.open_studio") : L10n.string("workspace.continue_in_studio"),
                 systemImage: "video"
             ) {
-                withAnimation(.easeInOut) {
-                    selectedSection = .studio
-                }
+                switchToSection(.studio)
             }
 
             HStack(spacing: 10) {
                 SecondaryActionButton(title: L10n.string("workspace.view_outputs"), systemImage: "film") {
-                    withAnimation(.easeInOut) {
-                        selectedSection = .outputs
-                    }
+                    switchToSection(.outputs)
                 }
 
                 SecondaryActionButton(title: L10n.string("workspace.edit_sequence"), systemImage: "square.stack.3d.up") {
-                    withAnimation(.easeInOut) {
-                        selectedSection = .sequence
-                    }
+                    switchToSection(.sequence)
                 }
             }
+        }
+    }
+
+    private var continueWorkingSection: some View {
+        let nextStep = dashboardNextStep
+
+        return VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(title: L10n.string("workspace.continue_working"))
+
+            Button {
+                switchToSection(nextStep.section)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: nextStep.systemImage)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(PannotateTheme.Colors.accent)
+                        .frame(width: 42, height: 42)
+                        .background(PannotateTheme.Colors.accentSoft.opacity(0.62))
+                        .clipShape(Circle())
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(nextStep.title)
+                            .font(PannotateTheme.Typography.cardTitle)
+                            .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                        Text(nextStep.message)
+                            .font(PannotateTheme.Typography.metadata)
+                            .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .pannotateCard()
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -273,11 +339,15 @@ struct ProjectWorkspaceView: View {
             SectionLabel(title: L10n.string("workspace.recent_outputs"))
 
             if outputs.isEmpty {
-                compactEmptyState(
+                compactEmptyAction(
                     systemImage: "film.badge.plus",
                     title: L10n.string("workspace.no_clips_yet"),
-                    message: L10n.string("empty.outputs.message")
-                )
+                    message: L10n.string("empty.outputs.message"),
+                    buttonTitle: L10n.string("workspace.start_in_studio"),
+                    buttonSystemImage: "video"
+                ) {
+                    switchToSection(.studio)
+                }
             } else {
                 VStack(spacing: 10) {
                     ForEach(outputs.prefix(3)) { clip in
@@ -293,89 +363,187 @@ struct ProjectWorkspaceView: View {
             SectionLabel(title: L10n.string("workspace.sequence_preview"))
 
             if sequenceClips.isEmpty {
-                compactEmptyState(
+                compactEmptyAction(
                     systemImage: "square.stack.3d.up.slash",
                     title: L10n.string("workspace.no_sequence_clips_yet"),
-                    message: L10n.string("empty.sequence.message")
-                )
+                    message: L10n.string("empty.sequence.message"),
+                    buttonTitle: L10n.string("workspace.add_from_outputs"),
+                    buttonSystemImage: "film"
+                ) {
+                    switchToSection(.outputs)
+                }
             } else {
-                VStack(spacing: 10) {
-                    ForEach(sequenceClips.prefix(3)) { clip in
-                        sequencePreviewRow(clip)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        dashboardMetric(title: L10n.string("project.sequence_clips"), value: "\(sequenceClips.count)", systemImage: "square.stack.3d.up")
+                        dashboardMetric(title: L10n.string("workspace.estimated_duration"), value: estimatedSequenceDuration, systemImage: "timer")
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(sequenceClips.prefix(6)) { clip in
+                                sequenceThumbnail(clip)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+
+                    SecondaryActionButton(title: L10n.string("workspace.edit_sequence"), systemImage: "square.stack.3d.up") {
+                        switchToSection(.sequence)
                     }
                 }
+                .padding(14)
+                .pannotateCard()
             }
         }
     }
 
-    private func outputPreviewRow(_ clip: GeneratedClip) -> some View {
-        HStack(spacing: 12) {
-            FixedClipThumbnail(style: clip.thumbnail, image: clip.image, cornerRadius: 14)
+    private var recentActivitySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(title: L10n.string("activity.recent_activity"))
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(clip.title)
-                    .font(PannotateTheme.Typography.cardTitle)
-                    .foregroundStyle(PannotateTheme.Colors.primaryText)
-                    .lineLimit(1)
+            if activities.isEmpty {
+                compactActivityEmptyState
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(activities.prefix(5)) { activity in
+                        activityRow(activity)
 
-                Text("\(clip.status.label) · \(clip.duration)")
-                    .font(PannotateTheme.Typography.metadata)
-                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                        if activity.id != activities.prefix(5).last?.id {
+                            Divider()
+                                .overlay(PannotateTheme.Colors.border)
+                                .padding(.leading, 58)
+                        }
+                    }
+                }
+                .pannotateCard()
             }
-
-            Spacer()
         }
-        .padding(12)
-        .pannotateCard()
     }
 
-    private func sequencePreviewRow(_ clip: SequenceClip) -> some View {
+    private var compactActivityEmptyState: some View {
         HStack(spacing: 12) {
-            Text("\(clip.order)")
-                .font(PannotateTheme.Typography.metadataEmphasis)
-                .foregroundStyle(PannotateTheme.Colors.secondaryText)
-                .frame(width: 34, height: 34)
-                .background(PannotateTheme.Colors.cardMuted)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            FixedClipThumbnail(style: clip.thumbnail, image: clip.image, cornerRadius: 14)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(clip.title)
-                    .font(PannotateTheme.Typography.cardTitle)
-                    .foregroundStyle(PannotateTheme.Colors.primaryText)
-                    .lineLimit(1)
-
-                Text(clip.duration)
-                    .font(PannotateTheme.Typography.metadata)
-                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
-            }
-
-            Spacer()
-        }
-        .padding(12)
-        .pannotateCard()
-    }
-
-    private func compactEmptyState(systemImage: String, title: String, message: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
+            Image(systemName: "clock.badge.questionmark")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.accent)
                 .frame(width: 42, height: 42)
                 .background(PannotateTheme.Colors.accentSoft.opacity(0.62))
                 .clipShape(Circle())
 
+            Text("activity.no_recent_activity")
+                .font(PannotateTheme.Typography.cardTitle)
+                .foregroundStyle(PannotateTheme.Colors.secondaryText)
+
+            Spacer()
+        }
+        .padding(14)
+        .pannotateCard()
+    }
+
+    private func activityRow(_ activity: ProjectActivityItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: activity.type.systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.accent)
+                .frame(width: 36, height: 36)
+                .background(PannotateTheme.Colors.accentSoft.opacity(0.56))
+                .clipShape(Circle())
+
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
+                Text(activity.type.title)
                     .font(PannotateTheme.Typography.cardTitle)
                     .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-                Text(message)
+                Text(activity.detail)
                     .font(PannotateTheme.Typography.metadata)
                     .foregroundStyle(PannotateTheme.Colors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
+
+                Text(formattedActivityDate(activity.date))
+                    .font(PannotateTheme.Typography.label)
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
             }
+
+            Spacer()
+        }
+        .padding(14)
+    }
+
+    private func outputPreviewRow(_ clip: GeneratedClip) -> some View {
+        Button {
+            switchToSection(.outputs)
+        } label: {
+            HStack(spacing: 12) {
+                FixedClipThumbnail(style: clip.thumbnail, image: clip.image, cornerRadius: 14)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(clip.title)
+                        .font(PannotateTheme.Typography.cardTitle)
+                        .foregroundStyle(PannotateTheme.Colors.primaryText)
+                        .lineLimit(1)
+
+                    Text("\(clip.status.label) · \(clip.duration)")
+                        .font(PannotateTheme.Typography.metadata)
+                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+            }
+            .padding(12)
+            .pannotateCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sequenceThumbnail(_ clip: SequenceClip) -> some View {
+        VStack(spacing: 6) {
+            Text("\(clip.order)")
+                .font(PannotateTheme.Typography.metadataEmphasis)
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+            ProjectCoverThumbnail(
+                cover: ProjectCoverSource(thumbnail: clip.thumbnail, image: clip.image),
+                size: CGSize(width: 72, height: 50),
+                cornerRadius: 12
+            )
+        }
+        .frame(width: 76)
+    }
+
+    private func compactEmptyAction(
+        systemImage: String,
+        title: String,
+        message: String,
+        buttonTitle: String,
+        buttonSystemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(PannotateTheme.Colors.accent)
+                    .frame(width: 42, height: 42)
+                    .background(PannotateTheme.Colors.accentSoft.opacity(0.62))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(PannotateTheme.Typography.cardTitle)
+                        .foregroundStyle(PannotateTheme.Colors.primaryText)
+
+                    Text(message)
+                        .font(PannotateTheme.Typography.metadata)
+                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            SecondaryActionButton(title: buttonTitle, systemImage: buttonSystemImage, action: action)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -391,32 +559,44 @@ struct ProjectWorkspaceView: View {
                     projectToRename = project
                 }
 
-                SecondaryActionButton(title: L10n.string("projects.duplicate_project"), systemImage: "plus.square.on.square") {
-                    onDuplicateProject(project)
+                SecondaryActionButton(title: L10n.string("project.settings"), systemImage: "slider.horizontal.3") {
+                    isShowingProjectSettings = true
                 }
             }
 
-            Button(role: .destructive) {
-                showDeleteConfirmation = true
-            } label: {
-                Label("common.delete", systemImage: "trash")
-                    .font(PannotateTheme.Typography.control)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: PannotateTheme.Metrics.buttonHeight)
-                    .background(PannotateTheme.Colors.cardMuted)
-                    .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
-                            .stroke(PannotateTheme.Colors.border, lineWidth: 1)
-                    )
+            HStack(spacing: 10) {
+                SecondaryActionButton(title: L10n.string("projects.duplicate_project"), systemImage: "plus.square.on.square") {
+                    onDuplicateProject(project)
+                }
+
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Label("common.delete", systemImage: "trash")
+                        .font(PannotateTheme.Typography.control)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: PannotateTheme.Metrics.buttonHeight)
+                        .background(PannotateTheme.Colors.cardMuted)
+                        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 
     private var projectActionsMenu: some View {
         Menu {
+            Button {
+                isShowingProjectSettings = true
+            } label: {
+                Label("project.settings", systemImage: "slider.horizontal.3")
+            }
+
             Button {
                 projectToRename = project
             } label: {
@@ -438,6 +618,69 @@ struct ProjectWorkspaceView: View {
             Image(systemName: "ellipsis.circle")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
+        }
+    }
+
+    private var projectCover: ProjectCoverSource {
+        let latestCompletedOutput = outputs.first { $0.status.isCompleted }
+        return ProjectCoverSource(
+            thumbnail: latestCompletedOutput?.thumbnail ?? project.thumbnail,
+            image: latestCompletedOutput?.image
+        )
+    }
+
+    private var dashboardNextStep: DashboardNextStep {
+        if outputs.isEmpty {
+            return DashboardNextStep(
+                title: L10n.string("workspace.start_creating"),
+                message: L10n.string("empty.studio.no_image.message"),
+                systemImage: "video.badge.plus",
+                section: .studio
+            )
+        }
+
+        if sequenceClips.isEmpty {
+            return DashboardNextStep(
+                title: L10n.string("workspace.add_clips_to_sequence"),
+                message: L10n.string("empty.sequence.message"),
+                systemImage: "square.stack.3d.up.badge.plus",
+                section: .outputs
+            )
+        }
+
+        return DashboardNextStep(
+            title: L10n.string("workspace.preview_sequence"),
+            message: L10n.string("workspace.sequence_ready_message"),
+            systemImage: "play.rectangle",
+            section: .sequence
+        )
+    }
+
+    private var estimatedSequenceDuration: String {
+        let totalSeconds = sequenceClips.compactMap { seconds(from: $0.duration) }.reduce(0, +)
+        guard totalSeconds > 0 else { return "—" }
+        return "\(totalSeconds)s"
+    }
+
+    private func seconds(from duration: String) -> Int? {
+        let numberText = duration
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "s", with: "")
+            .replacingOccurrences(of: "S", with: "")
+        return Int(numberText)
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        date.formatted(.dateTime.year().month().day())
+    }
+
+    private func formattedActivityDate(_ date: Date) -> String {
+        date.formatted(.dateTime.month().day().hour().minute())
+    }
+
+    private func switchToSection(_ section: ProjectWorkspaceSection) {
+        withAnimation(.easeInOut) {
+            selectedSection = section
         }
     }
 
@@ -527,12 +770,20 @@ private enum ProjectWorkspaceSection: String, CaseIterable, Identifiable {
     }
 }
 
+private struct DashboardNextStep {
+    let title: String
+    let message: String
+    let systemImage: String
+    let section: ProjectWorkspaceSection
+}
+
 #Preview {
     NavigationStack {
         ProjectWorkspaceView(
             project: MockPannotateData.projects[0],
             outputs: .constant(MockPannotateData.generatedClips),
             sequenceClips: .constant(MockPannotateData.sequenceClips),
+            activities: [],
             studioState: nil,
             continuationContext: nil
         )

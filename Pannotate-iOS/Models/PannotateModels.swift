@@ -7,19 +7,161 @@ struct Project: Identifiable, Codable {
     let clipCount: Int
     let updatedAt: String
     let thumbnail: ThumbnailStyle
+    let description: String
+    let createdAt: Date
+    let updatedAtDate: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case clipCount
+        case updatedAt
+        case thumbnail
+        case description
+        case createdAt
+        case updatedAtDate
+    }
 
     init(
         id: UUID = UUID(),
         title: String,
         clipCount: Int,
         updatedAt: String,
-        thumbnail: ThumbnailStyle
+        thumbnail: ThumbnailStyle,
+        description: String = "",
+        createdAt: Date = Date(),
+        updatedAtDate: Date = Date()
     ) {
         self.id = id
         self.title = title
         self.clipCount = clipCount
         self.updatedAt = updatedAt
         self.thumbnail = thumbnail
+        self.description = description
+        self.createdAt = createdAt
+        self.updatedAtDate = updatedAtDate
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        clipCount = try container.decode(Int.self, forKey: .clipCount)
+        updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        thumbnail = try container.decode(ThumbnailStyle.self, forKey: .thumbnail)
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAtDate = try container.decodeIfPresent(Date.self, forKey: .updatedAtDate) ?? Date()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(clipCount, forKey: .clipCount)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(thumbnail, forKey: .thumbnail)
+        try container.encode(description, forKey: .description)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAtDate, forKey: .updatedAtDate)
+    }
+}
+
+struct ProjectCoverSource {
+    let thumbnail: ThumbnailStyle
+    let image: UIImage?
+}
+
+struct ProjectActivityItem: Identifiable, Codable {
+    let id: UUID
+    let projectID: UUID
+    let type: ProjectActivityType
+    let detail: String
+    let date: Date
+    let relatedClipID: UUID?
+
+    init(
+        id: UUID = UUID(),
+        projectID: UUID,
+        type: ProjectActivityType,
+        detail: String,
+        date: Date = Date(),
+        relatedClipID: UUID? = nil
+    ) {
+        self.id = id
+        self.projectID = projectID
+        self.type = type
+        self.detail = detail
+        self.date = date
+        self.relatedClipID = relatedClipID
+    }
+}
+
+enum ProjectActivityType: String, Codable {
+    case projectCreated
+    case projectRenamed
+    case descriptionUpdated
+    case outputGenerated
+    case generationFailed
+    case generationRetried
+    case addedToSequence
+    case removedFromSequence
+    case sequenceReordered
+    case projectDuplicated
+    case clipDeleted
+
+    var title: String {
+        switch self {
+        case .projectCreated:
+            L10n.string("activity.project_created")
+        case .projectRenamed:
+            L10n.string("activity.project_renamed")
+        case .descriptionUpdated:
+            L10n.string("activity.description_updated")
+        case .outputGenerated:
+            L10n.string("activity.output_generated")
+        case .generationFailed:
+            L10n.string("activity.generation_failed")
+        case .generationRetried:
+            L10n.string("activity.generation_retried")
+        case .addedToSequence:
+            L10n.string("activity.added_to_sequence")
+        case .removedFromSequence:
+            L10n.string("activity.removed_from_sequence")
+        case .sequenceReordered:
+            L10n.string("activity.sequence_reordered")
+        case .projectDuplicated:
+            L10n.string("activity.project_duplicated")
+        case .clipDeleted:
+            L10n.string("activity.clip_deleted")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .projectCreated:
+            "folder.badge.plus"
+        case .projectRenamed:
+            "pencil"
+        case .descriptionUpdated:
+            "text.alignleft"
+        case .outputGenerated:
+            "film"
+        case .generationFailed:
+            "exclamationmark.triangle"
+        case .generationRetried:
+            "arrow.clockwise"
+        case .addedToSequence:
+            "square.stack.3d.up.badge.plus"
+        case .removedFromSequence:
+            "minus.circle"
+        case .sequenceReordered:
+            "arrow.up.arrow.down"
+        case .projectDuplicated:
+            "plus.square.on.square"
+        case .clipDeleted:
+            "trash"
+        }
     }
 }
 
@@ -358,6 +500,20 @@ enum ClipStatus: Codable {
     case processing(Int)
     case queued
     case failed
+
+    var isCompleted: Bool {
+        if case .done = self {
+            return true
+        }
+        return false
+    }
+
+    var isFailed: Bool {
+        if case .failed = self {
+            return true
+        }
+        return false
+    }
 
     var label: String {
         switch self {

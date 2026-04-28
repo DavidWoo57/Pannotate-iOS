@@ -257,6 +257,41 @@ struct FixedMockThumbnail: View {
     }
 }
 
+struct ProjectCoverThumbnail: View {
+    let cover: ProjectCoverSource
+    let size: CGSize?
+    var cornerRadius: CGFloat = 18
+
+    init(cover: ProjectCoverSource, size: CGSize? = nil, cornerRadius: CGFloat = 18) {
+        self.cover = cover
+        self.size = size
+        self.cornerRadius = cornerRadius
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            Group {
+                if let image = cover.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    MockThumbnail(style: cover.thumbnail, cornerRadius: cornerRadius)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        }
+        .frame(width: size?.width, height: size?.height)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+        )
+    }
+}
+
 struct CurrentProjectBanner: View {
     let prefix: String
     let project: Project
