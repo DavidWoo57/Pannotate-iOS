@@ -8,14 +8,20 @@ struct SequenceView: View {
     var onShowOutputs: () -> Void = {}
 
     private let actionFadeHeight: CGFloat = 24
-    private let reorderAnimation = Animation.easeInOut(duration: 0.22)
+    private let reorderAnimation = Animation.spring(response: 0.28, dampingFraction: 0.86)
+    private let sequenceCoordinateSpace = "sequence-reorder-coordinate-space"
 
     @State private var activeSheet: SequenceSheet?
     @State private var clipPendingRemoval: SequenceClip?
     @State private var showRemoveConfirmation = false
     @State private var isExporting = false
     @State private var showExportComplete = false
-    @State private var editMode: EditMode = .inactive
+    @State private var displayedClips: [SequenceClip] = []
+    @State private var rowFrames: [UUID: CGRect] = [:]
+    @State private var draggedClip: SequenceClip?
+    @State private var dragLocationY: CGFloat = 0
+    @State private var dragGrabOffsetY: CGFloat = 0
+    @State private var dragFrame: CGRect = .zero
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,7 +44,6 @@ struct SequenceView: View {
             }
         }
         .pannotatePage()
-        .environment(\.editMode, $editMode)
         .sheet(item: $activeSheet) { sheet in
             SequencePlaceholderSheet(sheet: sheet)
                 .presentationDetents([.medium])
@@ -72,24 +77,6 @@ struct SequenceView: View {
                 title: L10n.string("tab.sequence"),
                 subtitle: sequenceSubtitle
             )
-
-            if currentProject != nil && clips.count > 1 {
-                Button {
-                    toggleEditMode()
-                } label: {
-                    Text(isEditing ? L10n.string("common.done") : L10n.string("common.edit"))
-                        .font(PannotateTheme.Typography.control)
-                        .foregroundStyle(isEditing ? .white : PannotateTheme.Colors.accent)
-                        .frame(width: 68, height: 40)
-                        .background(isEditing ? PannotateTheme.Colors.accent : PannotateTheme.Colors.cardMuted)
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(isEditing ? .clear : PannotateTheme.Colors.border, lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
         .padding(.top, 12)
@@ -103,12 +90,8 @@ struct SequenceView: View {
         }
     }
 
-    private var isEditing: Bool {
-        editMode.isEditing
-    }
-
-    private var bottomActionSpacerHeight: CGFloat {
-        isEmbeddedInWorkspace ? 0 : 112
+    private var isReordering: Bool {
+        draggedClip != nil
     }
 
     private var sequenceSubtitle: String {
@@ -124,44 +107,46 @@ struct SequenceView: View {
         )
     }
 
-    private func toggleEditMode() {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-            editMode = isEditing ? .inactive : .active
-        }
-    }
-
     private func sequenceList(_ currentProject: Project) -> some View {
-        List {
-            if isEmbeddedInWorkspace == false {
-                CurrentProjectBanner(prefix: L10n.string("sequence.for_project"), project: currentProject)
-                    .sequenceListRow()
-            }
+        ZStack(alignment: .top) {
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    if isEmbeddedInWorkspace == false {
+                        CurrentProjectBanner(prefix: L10n.string("sequence.for_project"), project: currentProject)
+                    }
 
-            if clips.isEmpty {
-                sequenceGuidedEmptyState
-                    .sequenceListRow()
-            } else {
-                ForEach(clips) { clip in
-                    sequenceListItem(clip)
-                        .sequenceListRow()
-                        .moveDisabled(clips.count < 2)
+                    if displayedClips.isEmpty {
+                        sequenceGuidedEmptyState
+                    } else {
+                        ForEach(Array(displayedClips.enumerated()), id: \.element.id) { index, clip in
+                            reorderableSequenceItem(clip, displayOrder: index + 1)
+                        }
+                    }
+
+                    addClipPlaceholder
                 }
-                .onMove(perform: moveClips)
+                .padding(.horizontal, PannotateTheme.Metrics.pagePadding)
+                .padding(.top, 10)
+                .padding(.bottom, 10)
+            }
+            .coordinateSpace(name: sequenceCoordinateSpace)
+            .scrollDisabled(isReordering)
+            .onPreferenceChange(SequenceRowFramePreferenceKey.self) { frames in
+                rowFrames = frames
             }
 
-            addClipPlaceholder
-                .sequenceListRow()
-
-            if bottomActionSpacerHeight > 0 {
-                Color.clear
-                    .frame(height: bottomActionSpacerHeight)
-                    .accessibilityHidden(true)
-                    .sequenceListRow()
-            }
+            dragOverlay
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .background(PannotateTheme.Colors.background)
+        .onAppear {
+            syncDisplayedClips()
+        }
+        .onChange(of: clips.map(\.id)) { _, _ in
+            syncDisplayedClips()
+        }
+        .onChange(of: clips.map(\.order)) { _, _ in
+            syncDisplayedClips()
+        }
     }
 
     private var actionBar: some View {
@@ -227,9 +212,9 @@ struct SequenceView: View {
         }
     }
 
-    private func sequenceListItem(_ clip: SequenceClip) -> some View {
+    private func sequenceListItem(_ clip: SequenceClip, displayOrder: Int? = nil, isDragPreview: Bool = false) -> some View {
         VStack(spacing: 6) {
-            sequenceRow(clip)
+            sequenceRow(clip, displayOrder: displayOrder, isDragPreview: isDragPreview)
 
             if clip.continuesFromPreviousFrame {
                 Label("sequence.continues_from_previous_frame", systemImage: "link")
@@ -243,15 +228,11 @@ struct SequenceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func sequenceRow(_ clip: SequenceClip) -> some View {
+    private func sequenceRow(_ clip: SequenceClip, displayOrder: Int? = nil, isDragPreview: Bool = false) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "circle.grid.3x3.fill")
-                .font(.subheadline)
-                .foregroundStyle(isEditing ? PannotateTheme.Colors.accent : PannotateTheme.Colors.tertiaryText)
-                .frame(width: 18)
-                .accessibilityHidden(true)
+            dragHandle(for: clip, isDragPreview: isDragPreview)
 
-            Text("\(clip.order)")
+            Text("\(displayOrder ?? clip.order)")
                 .font(PannotateTheme.Typography.metadata)
                 .foregroundStyle(PannotateTheme.Colors.secondaryText)
                 .frame(width: 40, height: 40)
@@ -283,8 +264,26 @@ struct SequenceView: View {
         .contentShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.cardRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(isEditing ? PannotateTheme.Colors.accent.opacity(0.24) : .clear, lineWidth: 1)
+                .stroke(isDragPreview ? PannotateTheme.Colors.accent.opacity(0.28) : .clear, lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private func dragHandle(for clip: SequenceClip, isDragPreview: Bool) -> some View {
+        let canReorder = clips.count > 1
+        let handle = Image(systemName: "circle.grid.3x3.fill")
+            .font(.subheadline)
+            .foregroundStyle(canReorder ? PannotateTheme.Colors.accent : PannotateTheme.Colors.tertiaryText)
+            .frame(width: 30, height: 44)
+            .contentShape(Rectangle())
+            .accessibilityHidden(true)
+
+        if canReorder && isDragPreview == false {
+            handle
+                .gesture(reorderDragGesture(for: clip))
+        } else {
+            handle
+        }
     }
 
     private func sequenceMenu(_ clip: SequenceClip) -> some View {
@@ -341,8 +340,8 @@ struct SequenceView: View {
             )
         }
         .buttonStyle(.plain)
-        .disabled(isEditing)
-        .opacity(isEditing ? 0.55 : 1)
+        .disabled(isReordering)
+        .opacity(isReordering ? 0.55 : 1)
     }
 
 
@@ -405,13 +404,6 @@ struct SequenceView: View {
         }
     }
 
-    private func moveClips(from source: IndexSet, to destination: Int) {
-        withAnimation(reorderAnimation) {
-            clips.move(fromOffsets: source, toOffset: destination)
-            normalizeOrders()
-        }
-    }
-
     private func remove(_ clip: SequenceClip) {
         withAnimation(reorderAnimation) {
             clips.removeAll { $0.id == clip.id }
@@ -433,19 +425,142 @@ struct SequenceView: View {
             )
         }
     }
+
+    private func reorderableSequenceItem(_ clip: SequenceClip, displayOrder: Int) -> some View {
+        sequenceListItem(clip, displayOrder: displayOrder)
+            .opacity(draggedClip?.id == clip.id ? 0 : 1)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: SequenceRowFramePreferenceKey.self,
+                        value: [clip.id: proxy.frame(in: .named(sequenceCoordinateSpace))]
+                    )
+                }
+            )
+            .animation(reorderAnimation, value: displayedClips.map(\.id))
+    }
+
+    @ViewBuilder
+    private var dragOverlay: some View {
+        if let draggedClip {
+            let displayOrder = displayedClips.firstIndex(where: { $0.id == draggedClip.id }).map { $0 + 1 } ?? draggedClip.order
+
+            sequenceListItem(draggedClip, displayOrder: displayOrder, isDragPreview: true)
+                .frame(width: dragFrame.width)
+                .scaleEffect(1.015)
+                .shadow(color: .black.opacity(0.16), radius: 18, y: 10)
+                .position(
+                    x: dragFrame.midX,
+                    y: dragLocationY - dragGrabOffsetY + (dragFrame.height / 2)
+                )
+                .zIndex(10)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func reorderDragGesture(for clip: SequenceClip) -> some Gesture {
+        DragGesture(minimumDistance: 2, coordinateSpace: .named(sequenceCoordinateSpace))
+            .onChanged { value in
+                if draggedClip == nil {
+                    beginDrag(clip, value: value)
+                }
+
+                updateDragLocation(value.location.y, draggedClipID: clip.id)
+            }
+            .onEnded { _ in
+                finishDrag()
+            }
+    }
+
+    private func beginDrag(_ clip: SequenceClip, value: DragGesture.Value) {
+        guard clips.count > 1, let frame = rowFrames[clip.id] else { return }
+
+        syncDisplayedClips(force: true)
+        draggedClip = clip
+        dragFrame = frame
+        dragGrabOffsetY = value.startLocation.y - frame.minY
+        dragLocationY = value.location.y
+    }
+
+    private func updateDragLocation(_ locationY: CGFloat, draggedClipID: UUID) {
+        guard draggedClip?.id == draggedClipID else { return }
+
+        dragLocationY = locationY
+        updateDisplayedOrder(draggedClipID: draggedClipID, locationY: locationY)
+    }
+
+    private func updateDisplayedOrder(draggedClipID: UUID, locationY: CGFloat) {
+        guard let currentIndex = displayedClips.firstIndex(where: { $0.id == draggedClipID }) else { return }
+
+        let remainingClips = displayedClips.filter { $0.id != draggedClipID }
+        var destinationIndex = remainingClips.count
+
+        for (index, clip) in remainingClips.enumerated() {
+            guard let frame = rowFrames[clip.id] else { continue }
+
+            if locationY < frame.midY {
+                destinationIndex = index
+                break
+            }
+        }
+
+        var reorderedClips = displayedClips
+        let dragged = reorderedClips.remove(at: currentIndex)
+        let safeDestinationIndex = min(destinationIndex, reorderedClips.count)
+
+        guard safeDestinationIndex != currentIndex else { return }
+
+        withAnimation(reorderAnimation) {
+            reorderedClips.insert(dragged, at: safeDestinationIndex)
+            displayedClips = reorderedClips
+        }
+    }
+
+    private func finishDrag() {
+        guard draggedClip != nil else { return }
+
+        let normalizedClips = normalized(displayedClips)
+        let orderChanged = normalizedClips.map(\.id) != clips.map(\.id)
+
+        withAnimation(reorderAnimation) {
+            displayedClips = normalizedClips
+            draggedClip = nil
+            dragLocationY = 0
+            dragGrabOffsetY = 0
+            dragFrame = .zero
+        }
+
+        if orderChanged {
+            clips = normalizedClips
+        }
+    }
+
+    private func syncDisplayedClips(force: Bool = false) {
+        guard force || isReordering == false else { return }
+        displayedClips = normalized(clips)
+    }
+
+    private func normalized(_ clips: [SequenceClip]) -> [SequenceClip] {
+        clips.enumerated().map { index, clip in
+            SequenceClip(
+                id: clip.id,
+                sourceOutputClipID: clip.sourceOutputClipID,
+                title: clip.title,
+                order: index + 1,
+                duration: clip.duration,
+                continuesFromPreviousFrame: index > 0 && clip.continuesFromPreviousFrame,
+                thumbnail: clip.thumbnail,
+                image: clip.image
+            )
+        }
+    }
 }
 
-private extension View {
-    func sequenceListRow() -> some View {
-        self
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(
-                top: 6,
-                leading: PannotateTheme.Metrics.pagePadding,
-                bottom: 6,
-                trailing: PannotateTheme.Metrics.pagePadding
-            ))
+private struct SequenceRowFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
