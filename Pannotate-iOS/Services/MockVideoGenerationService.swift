@@ -1,46 +1,61 @@
 import Foundation
 
 struct MockVideoGenerationService: VideoGenerationService {
-    func submitGeneration(_ submission: VideoGenerationSubmission) async -> GenerationJob {
-        GenerationJob(
-            id: UUID(),
-            requestID: submission.request.id,
-            createdAt: Date(),
-            failureReason: failureReason(for: submission.finalVideoPrompt),
-            status: .queued
-        )
+    private let provider: VideoGenerationProvider
+
+    init(provider: VideoGenerationProvider = MockVideoGenerationProvider()) {
+        self.provider = provider
     }
 
-    func submitRetry(for clip: GeneratedClip) async -> GenerationJob {
-        GenerationJob(
-            id: clip.id,
-            requestID: clip.generationRequestID ?? UUID(),
-            createdAt: Date(),
-            failureReason: nil,
-            status: .queued
+    func submitGeneration(_ submission: VideoGenerationSubmission) async -> GenerationJob {
+        let payload = submission.payload ?? GenerationPayloadBuilder.build(
+            submission: submission,
+            providerConfiguration: provider.configuration
         )
+        let providerRequest = ProviderGenerationRequest(
+            payload: payload,
+            sourceThumbnail: submission.thumbnail,
+            sourceImage: submission.image,
+            allowsMockFailure: true
+        )
+        let snapshot = await provider.submitGeneration(providerRequest)
+        return generationJob(from: snapshot)
+    }
+
+    func submitRetry(for clip: GeneratedClip, projectID: UUID?) async -> GenerationJob {
+        let providerConfiguration = GenerationProviderConfiguration(
+            id: GenerationProviderID(rawValue: clip.generationProviderID ?? provider.configuration.id.rawValue),
+            displayName: clip.generationProviderName ?? provider.configuration.displayName,
+            modelID: clip.providerModelID ?? provider.configuration.modelID,
+            capabilities: provider.configuration.capabilities
+        )
+        let payload = GenerationPayloadBuilder.buildRetryPayload(
+            failedClip: clip,
+            projectID: projectID,
+            providerConfiguration: providerConfiguration
+        )
+        let providerRequest = ProviderGenerationRequest(
+            payload: payload,
+            sourceThumbnail: clip.thumbnail,
+            sourceImage: clip.image,
+            allowsMockFailure: false
+        )
+        let snapshot = await provider.submitGeneration(providerRequest)
+        return generationJob(from: snapshot, id: clip.id)
     }
 
     func status(for job: GenerationJob, step: Int) async -> GenerationJobStatus {
-        let delay: UInt64 = step == 0 ? 450_000_000 : 950_000_000
-        try? await Task.sleep(nanoseconds: delay)
-
-        if step >= 2, let failureReason = job.failureReason {
-            return .failed(failureReason)
-        }
-
-        switch step {
-        case 0:
-            return .processing(45)
-        case 1:
-            return .processing(82)
-        default:
-            return .completed
-        }
+        let snapshot = await provider.checkStatus(jobID: job.providerJobID)
+        return snapshot.status
     }
 
     func outputClip(for job: GenerationJob, submission: VideoGenerationSubmission, status: GenerationJobStatus) -> GeneratedClip {
-        GeneratedClip(
+        let payload = submission.payload ?? GenerationPayloadBuilder.build(
+            submission: submission,
+            providerConfiguration: provider.configuration
+        )
+        let payloadSummary = payload.compactSummary
+        return GeneratedClip(
             id: job.id,
             title: submission.title,
             duration: submission.duration,
@@ -57,12 +72,30 @@ struct MockVideoGenerationService: VideoGenerationService {
             generationMode: submission.request.generationMode,
             continuationSourceClipID: submission.continuationSourceClipID,
             continuationSourceClipTitle: submission.continuationSourceClipTitle,
-            failureReason: failureReason(from: status)
+            failureReason: failureReason(from: status),
+            generationProviderID: job.providerID.rawValue,
+            generationProviderName: job.providerName,
+            providerJobID: job.providerJobID.rawValue,
+            providerModelID: job.modelID,
+            generationPayloadSummary: payloadSummary,
+            generationParameters: submission.request.generationParameters,
+            outputResult: outputResult(for: job, payload: payload, status: status, payloadSummary: payloadSummary)
         )
     }
 
     func retryOutputClip(for job: GenerationJob, failedClip: GeneratedClip, status: GenerationJobStatus) -> GeneratedClip {
-        GeneratedClip(
+        let payload = GenerationPayloadBuilder.buildRetryPayload(
+            failedClip: failedClip,
+            projectID: nil,
+            providerConfiguration: GenerationProviderConfiguration(
+                id: job.providerID,
+                displayName: job.providerName,
+                modelID: job.modelID,
+                capabilities: provider.configuration.capabilities
+            )
+        )
+        let payloadSummary = failedClip.generationPayloadSummary ?? payload.compactSummary
+        return GeneratedClip(
             id: failedClip.id,
             title: failedClip.title,
             duration: failedClip.duration,
@@ -79,7 +112,14 @@ struct MockVideoGenerationService: VideoGenerationService {
             generationMode: failedClip.generationMode,
             continuationSourceClipID: failedClip.continuationSourceClipID,
             continuationSourceClipTitle: failedClip.continuationSourceClipTitle,
-            failureReason: failureReason(from: status)
+            failureReason: failureReason(from: status),
+            generationProviderID: job.providerID.rawValue,
+            generationProviderName: job.providerName,
+            providerJobID: job.providerJobID.rawValue,
+            providerModelID: job.modelID,
+            generationPayloadSummary: payloadSummary,
+            generationParameters: failedClip.generationParameters ?? .defaults,
+            outputResult: outputResult(for: job, payload: payload, status: status, payloadSummary: payloadSummary)
         )
     }
 
@@ -91,15 +131,9 @@ struct MockVideoGenerationService: VideoGenerationService {
             "Processing"
         case .completed:
             "Just now"
-        case .failed:
+        case .failed, .cancelled:
             L10n.string("generation.failed")
         }
-    }
-
-    private func failureReason(for finalVideoPrompt: String) -> String? {
-        finalVideoPrompt.localizedCaseInsensitiveContains("mock fail")
-            ? L10n.string("generation.mock_generation_failed")
-            : nil
     }
 
     private func failureReason(from status: GenerationJobStatus) -> String? {
@@ -110,9 +144,95 @@ struct MockVideoGenerationService: VideoGenerationService {
         return nil
     }
 
+    private func generationJob(from snapshot: ProviderJobSnapshot, id: UUID? = nil) -> GenerationJob {
+        GenerationJob(
+            id: id ?? UUID(),
+            requestID: snapshot.requestID,
+            createdAt: snapshot.createdAt,
+            failureReason: snapshot.failureReason,
+            providerID: snapshot.providerID,
+            providerJobID: snapshot.providerJobID,
+            providerName: snapshot.providerName,
+            modelID: snapshot.modelID,
+            status: snapshot.status
+        )
+    }
+
+    private func outputResult(
+        for job: GenerationJob,
+        payload: GenerationRequestPayload,
+        status: GenerationJobStatus,
+        payloadSummary: String
+    ) -> GeneratedOutputResult? {
+        guard case .completed = status else { return nil }
+
+        let resolution = resolution(for: payload.parameters.aspectRatio)
+        return GeneratedOutputResult(
+            providerID: job.providerID.rawValue,
+            providerName: job.providerName,
+            providerJobID: job.providerJobID.rawValue,
+            modelID: job.modelID,
+            createdAt: job.createdAt,
+            completedAt: Date(),
+            duration: payload.parameters.duration,
+            generationParameterSummary: generationParameterSummary(for: payload.parameters),
+            payloadSummary: payloadSummary,
+            failureReason: nil,
+            rawProviderMetadata: [
+                "mode": "mock",
+                "aspectRatio": payload.parameters.aspectRatio,
+                "quality": payload.parameters.quality,
+                "playback": "unavailable"
+            ],
+            media: OutputMediaMetadata(
+                remoteVideoURL: nil,
+                localVideoFileURL: nil,
+                thumbnailReference: payload.asset.thumbnailReference,
+                hasThumbnailImage: payload.asset.hasSourceImage,
+                duration: payload.parameters.duration,
+                resolution: resolution,
+                fileSize: nil,
+                isPlaybackAvailable: false,
+                isExportAvailable: false,
+                isMockResult: true
+            )
+        )
+    }
+
+    private func generationParameterSummary(for parameters: GenerationParameterPackage) -> String {
+        var lines = [
+            "\(L10n.string("generation.duration")): \(parameters.duration)",
+            "\(L10n.string("generation.aspect_ratio")): \(parameters.aspectRatio)",
+            "\(L10n.string("generation.quality")): \(parameters.quality)"
+        ]
+
+        if let negativePrompt = parameters.negativePrompt {
+            lines.append("\(L10n.string("generation.negative_prompt")): \(negativePrompt)")
+        }
+
+        lines.append("\(L10n.string("generation.seed")): \(parameters.seed.map { "\($0)" } ?? L10n.string("generation.automatic"))")
+        return lines.joined(separator: "\n")
+    }
+
+    private func resolution(for aspectRatio: String) -> String {
+        switch aspectRatio {
+        case "16:9":
+            "1280x720"
+        case "9:16":
+            "720x1280"
+        case "1:1":
+            "1024x1024"
+        default:
+            "1280x720"
+        }
+    }
+
     private func generationRequestSummary(for request: GenerationRequest, pipelineResult: PromptPipelineResult, finalVideoPrompt: String) -> String {
         """
         Request \(request.id.uuidString.prefix(8)) · \(request.generationMode.title)
+        Provider: \(provider.configuration.displayName)
+        Model: \(provider.configuration.modelID ?? "None")
+        API payload: local/mock metadata package, no raw API keys or image bytes
         Project: \(request.projectName ?? "No project")
         Interpretation: \(pipelineResult.interpretationMode.title)
         Source clip: \(request.sourceClipTitle ?? "None")

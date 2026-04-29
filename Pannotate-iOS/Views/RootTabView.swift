@@ -410,6 +410,14 @@ struct RootTabView: View {
 
     private func addSampleOutputs() {
         let projectID = ensureDebugProject()
+        let completedRequestID = UUID()
+        let completedDate = Date()
+        let completedParameterSummary = """
+        \(L10n.string("generation.duration")): 4s
+        \(L10n.string("generation.aspect_ratio")): auto
+        \(L10n.string("generation.quality")): \(GenerationQualityOption.standard.title)
+        \(L10n.string("generation.seed")): \(L10n.string("generation.automatic"))
+        """
         let samples = [
             GeneratedClip(
                 title: L10n.string("developer_tools.sample_completed_clip_title"),
@@ -417,12 +425,42 @@ struct RootTabView: View {
                 createdAt: L10n.string("developer_tools.just_now"),
                 status: .done,
                 thumbnail: .city,
-                generationRequestID: UUID(),
+                generationRequestID: completedRequestID,
                 generationRequestSummary: L10n.string("developer_tools.sample_request_summary"),
                 interpretationMode: .fast,
                 finalVideoPrompt: L10n.string("developer_tools.sample_final_prompt"),
                 annotationCount: 1,
-                generationMode: .newShot
+                generationMode: .newShot,
+                generationProviderID: GenerationProviderID.mock.rawValue,
+                generationProviderName: GenerationProviderConfiguration.mock.displayName,
+                providerJobID: "mock-sample-\(completedRequestID.uuidString.prefix(8))",
+                providerModelID: GenerationProviderConfiguration.mock.modelID,
+                generationParameters: .defaults,
+                outputResult: GeneratedOutputResult(
+                    providerID: GenerationProviderID.mock.rawValue,
+                    providerName: GenerationProviderConfiguration.mock.displayName,
+                    providerJobID: "mock-sample-\(completedRequestID.uuidString.prefix(8))",
+                    modelID: GenerationProviderConfiguration.mock.modelID,
+                    createdAt: completedDate,
+                    completedAt: completedDate,
+                    duration: "4s",
+                    generationParameterSummary: completedParameterSummary,
+                    payloadSummary: nil,
+                    failureReason: nil,
+                    rawProviderMetadata: ["mode": "mock", "playback": "unavailable"],
+                    media: OutputMediaMetadata(
+                        remoteVideoURL: nil,
+                        localVideoFileURL: nil,
+                        thumbnailReference: String(describing: ThumbnailStyle.city),
+                        hasThumbnailImage: true,
+                        duration: "4s",
+                        resolution: "1280x720",
+                        fileSize: nil,
+                        isPlaybackAvailable: false,
+                        isExportAvailable: false,
+                        isMockResult: true
+                    )
+                )
             ),
             GeneratedClip(
                 title: L10n.string("developer_tools.sample_processing_clip_title"),
@@ -508,7 +546,7 @@ struct RootTabView: View {
         saveState()
 
         Task {
-            var job = await videoGenerationService.submitRetry(for: clip)
+            var job = await videoGenerationService.submitRetry(for: clip, projectID: projectID)
             await MainActor.run {
                 upsertOutputClip(
                     videoGenerationService.retryOutputClip(for: job, failedClip: clip, status: job.status),

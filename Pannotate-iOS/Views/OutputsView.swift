@@ -217,10 +217,24 @@ struct OutputsView: View {
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
                 .lineLimit(1)
 
-            Text("\(clip.duration) · \(clip.createdAt)")
-                .font(PannotateTheme.Typography.metadata)
-                .foregroundStyle(PannotateTheme.Colors.secondaryText)
-                .lineLimit(1)
+            HStack(spacing: 8) {
+                Text("\(clip.duration) · \(clip.createdAt)")
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                if let outputResult = clip.outputResult {
+                    Text(outputResult.media.resolution ?? L10n.string("outputs.mock_result"))
+                        .font(PannotateTheme.Typography.label)
+                        .foregroundStyle(PannotateTheme.Colors.accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(PannotateTheme.Colors.accent.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
 
             if isFailed(clip.status) {
                 failedClipActions(clip)
@@ -320,7 +334,14 @@ struct OutputsView: View {
                 generationMode: clip.generationMode,
                 continuationSourceClipID: clip.continuationSourceClipID,
                 continuationSourceClipTitle: clip.continuationSourceClipTitle,
-                failureReason: clip.failureReason
+                failureReason: clip.failureReason,
+                generationProviderID: clip.generationProviderID,
+                generationProviderName: clip.generationProviderName,
+                providerJobID: clip.providerJobID,
+                providerModelID: clip.providerModelID,
+                generationPayloadSummary: clip.generationPayloadSummary,
+                generationParameters: clip.generationParameters,
+                outputResult: clip.outputResult
             )
         }
     }
@@ -486,16 +507,7 @@ private struct ClipPreviewPlaceholderSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("outputs.clip_preview_placeholder")
-                        .font(PannotateTheme.Typography.cardTitle)
-                        .foregroundStyle(PannotateTheme.Colors.accent)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Text("outputs.clip_preview_note")
-                        .font(PannotateTheme.Typography.metadata)
-                        .foregroundStyle(PannotateTheme.Colors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                    playbackDetails
 
                     if isFailed {
                         failedPreviewActions
@@ -506,7 +518,7 @@ private struct ClipPreviewPlaceholderSheet: View {
                 .padding(PannotateTheme.Metrics.pagePadding)
             }
             .background(PannotateTheme.Colors.background.ignoresSafeArea())
-            .navigationTitle(L10n.string("outputs.clip_preview"))
+            .navigationTitle(L10n.string("outputs.output_details"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -519,14 +531,26 @@ private struct ClipPreviewPlaceholderSheet: View {
         }
     }
 
+    private var playbackDetails: some View {
+        detailCard(title: L10n.string("outputs.playback")) {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(L10n.string("outputs.playback_unavailable"), systemImage: "play.slash")
+                    .font(PannotateTheme.Typography.metadataEmphasis)
+                    .foregroundStyle(PannotateTheme.Colors.accent)
+
+                Text("outputs.playback_unavailable_message")
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(PannotateTheme.Colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     @ViewBuilder
     private var generationDetails: some View {
         if hasGenerationDetails {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("generation.details")
-                    .font(PannotateTheme.Typography.cardTitle)
-                    .foregroundStyle(PannotateTheme.Colors.accent)
-
+            detailCard(title: L10n.string("generation.details")) {
                 detailRows
 
                 if isFailed {
@@ -542,18 +566,18 @@ private struct ClipPreviewPlaceholderSheet: View {
                     detailBlock(title: L10n.string("generation.original_generated_prompt"), text: originalGeneratedPrompt)
                 }
 
+                if let generationParameterSummary = clip.outputResult?.generationParameterSummary {
+                    detailBlock(title: L10n.string("generation.settings"), text: generationParameterSummary)
+                }
+
                 if let generationRequestSummary = clip.generationRequestSummary {
                     detailBlock(title: L10n.string("generation.request_summary"), text: generationRequestSummary)
                 }
+
+                if let generationPayloadSummary = clip.generationPayloadSummary {
+                    detailBlock(title: L10n.string("generation.api_payload_summary"), text: generationPayloadSummary)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .background(PannotateTheme.Colors.cardMuted)
-            .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
-                    .stroke(PannotateTheme.Colors.border, lineWidth: 1)
-            )
         }
     }
 
@@ -567,6 +591,8 @@ private struct ClipPreviewPlaceholderSheet: View {
             clip.generationMode != nil ||
             clip.continuationSourceClipTitle != nil ||
             clip.failureReason != nil ||
+            clip.generationPayloadSummary != nil ||
+            clip.outputResult != nil ||
             isFailed
     }
 
@@ -577,9 +603,27 @@ private struct ClipPreviewPlaceholderSheet: View {
             metadataRow(label: L10n.string("generation.annotation_count"), value: clip.annotationCount.map(String.init) ?? L10n.string("common.not_captured"))
             metadataRow(label: L10n.string("generation.request_id"), value: clip.generationRequestID.map { String($0.uuidString.prefix(8)) } ?? L10n.string("common.not_captured"))
             metadataRow(label: L10n.string("generation.context"), value: generationContextText)
+            metadataRow(label: L10n.string("outputs.provider"), value: providerNameText)
+            metadataRow(label: L10n.string("outputs.job_id"), value: providerJobIDText)
+            metadataRow(label: L10n.string("outputs.model"), value: modelText)
+            metadataRow(label: L10n.string("generation.duration"), value: clip.outputResult?.duration ?? clip.duration)
+            metadataRow(label: L10n.string("outputs.resolution"), value: clip.outputResult?.media.resolution ?? L10n.string("outputs.unavailable"))
+            metadataRow(label: L10n.string("outputs.remote_video"), value: clip.outputResult?.media.remoteVideoURL?.absoluteString ?? L10n.string("outputs.unavailable"))
+            metadataRow(label: L10n.string("outputs.local_file"), value: clip.outputResult?.media.localVideoFileURL?.lastPathComponent ?? L10n.string("outputs.unavailable"))
+            metadataRow(label: L10n.string("outputs.file_size"), value: clip.outputResult?.media.fileSize ?? L10n.string("outputs.unavailable"))
+            metadataRow(label: L10n.string("outputs.export_availability"), value: availabilityText(clip.outputResult?.media.isExportAvailable ?? false))
+            metadataRow(label: L10n.string("outputs.created"), value: clip.outputResult?.createdAt.formatted(date: .abbreviated, time: .shortened) ?? L10n.string("outputs.unavailable"))
+
+            if let completedAt = clip.outputResult?.completedAt {
+                metadataRow(label: L10n.string("outputs.completed"), value: completedAt.formatted(date: .abbreviated, time: .shortened))
+            }
 
             if let sourceClipTitle = clip.continuationSourceClipTitle {
                 metadataRow(label: L10n.string("generation.source_clip"), value: sourceClipTitle)
+            }
+
+            if let outputResult = clip.outputResult, outputResult.media.isMockResult {
+                metadataRow(label: L10n.string("outputs.mock_result"), value: L10n.string("common.yes"))
             }
         }
     }
@@ -624,6 +668,43 @@ private struct ClipPreviewPlaceholderSheet: View {
         }
 
         return clip.continuationSourceClipTitle == nil ? L10n.string("generation.new_shot") : L10n.string("generation.continue_from_last_frame")
+    }
+
+    private var providerNameText: String {
+        clip.outputResult?.providerName ?? clip.generationProviderName ?? L10n.string("outputs.unavailable")
+    }
+
+    private var providerJobIDText: String {
+        clip.outputResult?.providerJobID ?? clip.providerJobID ?? L10n.string("outputs.unavailable")
+    }
+
+    private var modelText: String {
+        clip.outputResult?.modelID ?? clip.providerModelID ?? L10n.string("outputs.unavailable")
+    }
+
+    private func availabilityText(_ isAvailable: Bool) -> String {
+        isAvailable ? L10n.string("common.yes") : L10n.string("outputs.unavailable")
+    }
+
+    private func detailCard<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(PannotateTheme.Typography.cardTitle)
+                .foregroundStyle(PannotateTheme.Colors.accent)
+
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(PannotateTheme.Colors.cardMuted)
+        .clipShape(RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: PannotateTheme.Metrics.controlRadius, style: .continuous)
+                .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+        )
     }
 
     private func metadataRow(label: String, value: String) -> some View {

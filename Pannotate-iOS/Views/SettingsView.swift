@@ -720,29 +720,38 @@ private enum DeveloperToolConfirmation: Identifiable {
 
 private struct AIServicesSettingsView: View {
     @AppStorage("useMockAIServices") private var useMockServices = true
-    @State private var visualLLMAPIKey = ""
-    @State private var videoAPIKey = ""
+    @State private var videoAPIKeyInput = ""
+    @State private var visionAPIKeyInput = ""
+    @State private var videoAPIKeyState: APIKeyConfigurationState = .notConfigured
+    @State private var visionAPIKeyState: APIKeyConfigurationState = .notConfigured
+    @State private var videoConnectionStatus: ProviderConnectionStatus = .notTested
+    @State private var visionConnectionStatus: ProviderConnectionStatus = .notTested
     @State private var showMockRequiredAlert = false
+    private let capabilityColumns = [GridItem(.adaptive(minimum: 112), spacing: 8)]
 
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
                 mockModeSection
 
-                serviceSection(
-                    title: L10n.string("ai_services.visual_understanding"),
-                    systemImage: "eye",
-                    description: L10n.string("ai_services.visual_understanding_description"),
-                    apiKeyTitle: L10n.string("ai_services.visual_llm_api_key"),
-                    apiKey: $visualLLMAPIKey
+                providerSection(
+                    configuration: .videoGeneration,
+                    apiKeyInput: $videoAPIKeyInput,
+                    apiKeyState: videoAPIKeyState,
+                    connectionStatus: videoConnectionStatus,
+                    saveAction: saveVideoAPIKey,
+                    clearAction: clearVideoAPIKey,
+                    testAction: testVideoConnection
                 )
 
-                serviceSection(
-                    title: L10n.string("ai_services.video_generation"),
-                    systemImage: "play.rectangle",
-                    description: L10n.string("ai_services.video_generation_description"),
-                    apiKeyTitle: L10n.string("ai_services.video_api_key"),
-                    apiKey: $videoAPIKey
+                providerSection(
+                    configuration: .visualUnderstanding,
+                    apiKeyInput: $visionAPIKeyInput,
+                    apiKeyState: visionAPIKeyState,
+                    connectionStatus: visionConnectionStatus,
+                    saveAction: saveVisionAPIKey,
+                    clearAction: clearVisionAPIKey,
+                    testAction: testVisionConnection
                 )
 
                 Text("ai_services.storage_note")
@@ -756,6 +765,9 @@ private struct AIServicesSettingsView: View {
         .background(PannotateTheme.Colors.background.ignoresSafeArea())
         .navigationTitle(L10n.string("ai_services.title"))
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            refreshKeyStates()
+        }
         .alert(L10n.string("ai_services.mock_required_title"), isPresented: $showMockRequiredAlert) {
             Button("common.ok", role: .cancel) {}
         } message: {
@@ -797,16 +809,18 @@ private struct AIServicesSettingsView: View {
         }
     }
 
-    private func serviceSection(
-        title: String,
-        systemImage: String,
-        description: String,
-        apiKeyTitle: String,
-        apiKey: Binding<String>
+    private func providerSection(
+        configuration: AIServiceConfiguration,
+        apiKeyInput: Binding<String>,
+        apiKeyState: APIKeyConfigurationState,
+        connectionStatus: ProviderConnectionStatus,
+        saveAction: @escaping () -> Void,
+        clearAction: @escaping () -> Void,
+        testAction: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Image(systemName: systemImage)
+                Image(systemName: configuration.systemImage)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(PannotateTheme.Colors.accent)
                     .frame(width: 42, height: 42)
@@ -814,11 +828,11 @@ private struct AIServicesSettingsView: View {
                     .clipShape(Circle())
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
+                    Text(configuration.title)
                         .font(PannotateTheme.Typography.cardTitle)
                         .foregroundStyle(PannotateTheme.Colors.primaryText)
 
-                    Text(description)
+                    Text(configuration.description)
                         .font(PannotateTheme.Typography.metadata)
                         .foregroundStyle(PannotateTheme.Colors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -827,15 +841,33 @@ private struct AIServicesSettingsView: View {
 
             HStack(spacing: 8) {
                 statusPill(L10n.string("ai_services.mock_mode"), color: PannotateTheme.Colors.accent)
-                statusPill(apiKey.wrappedValue.isEmpty ? L10n.string("ai_services.not_connected") : L10n.string("ai_services.ready_placeholder"), color: apiKey.wrappedValue.isEmpty ? PannotateTheme.Colors.tertiaryText : PannotateTheme.Colors.success)
+                statusPill(apiKeyState.title, color: apiKeyState.color)
             }
 
+            infoRow(
+                title: L10n.string("ai_services.current_provider"),
+                value: configuration.providerName,
+                systemImage: "server.rack"
+            )
+
             VStack(alignment: .leading, spacing: 8) {
-                Text(apiKeyTitle)
+                Text("ai_services.provider_capabilities")
                     .font(PannotateTheme.Typography.label)
                     .foregroundStyle(PannotateTheme.Colors.tertiaryText)
 
-                SecureField(L10n.string("ai_services.api_key_placeholder"), text: apiKey)
+                LazyVGrid(columns: capabilityColumns, alignment: .leading, spacing: 8) {
+                    ForEach(configuration.capabilities, id: \.self) { capability in
+                        statusPill(L10n.string(capability), color: PannotateTheme.Colors.secondaryText)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(configuration.apiKeyTitle)
+                    .font(PannotateTheme.Typography.label)
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+                SecureField(L10n.string("ai_services.api_key_placeholder"), text: apiKeyInput)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(PannotateTheme.Typography.metadataEmphasis)
@@ -846,10 +878,72 @@ private struct AIServicesSettingsView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(PannotateTheme.Colors.border, lineWidth: 1)
                     )
+
+                HStack(spacing: 10) {
+                    Button {
+                        saveAction()
+                    } label: {
+                        Label("ai_services.save_key", systemImage: "key")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(PannotateTheme.Colors.accent)
+                    .disabled(apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button(role: .destructive) {
+                        clearAction()
+                    } label: {
+                        Label("ai_services.clear_key", systemImage: "xmark.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(apiKeyState == .notConfigured)
+                }
+                .font(PannotateTheme.Typography.label)
+            }
+
+            Divider()
+                .overlay(PannotateTheme.Colors.border)
+
+            HStack(spacing: 12) {
+                Button {
+                    testAction()
+                } label: {
+                    Label("ai_services.test_connection", systemImage: "checkmark.seal")
+                        .font(PannotateTheme.Typography.control)
+                }
+                .buttonStyle(.bordered)
+                .tint(PannotateTheme.Colors.accent)
+
+                Text(connectionStatus.title)
+                    .font(PannotateTheme.Typography.metadata)
+                    .foregroundStyle(connectionStatus.color)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(16)
         .pannotateCard()
+    }
+
+    private func infoRow(title: String, value: String, systemImage: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PannotateTheme.Colors.accent)
+                .frame(width: 28, height: 28)
+                .background(PannotateTheme.Colors.accentSoft.opacity(0.45))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(PannotateTheme.Typography.label)
+                    .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+                Text(value)
+                    .font(PannotateTheme.Typography.metadataEmphasis)
+                    .foregroundStyle(PannotateTheme.Colors.primaryText)
+            }
+
+            Spacer(minLength: 0)
+        }
     }
 
     private func statusPill(_ title: String, color: Color) -> some View {
@@ -860,6 +954,132 @@ private struct AIServicesSettingsView: View {
             .padding(.vertical, 6)
             .background(color.opacity(0.14))
             .clipShape(Capsule())
+    }
+
+    private func refreshKeyStates() {
+        videoAPIKeyState = APIKeyStore.isConfigured(service: AIServiceConfiguration.videoGeneration.keychainService) ? .configured : .notConfigured
+        visionAPIKeyState = APIKeyStore.isConfigured(service: AIServiceConfiguration.visualUnderstanding.keychainService) ? .configured : .notConfigured
+    }
+
+    private func saveVideoAPIKey() {
+        if APIKeyStore.save(videoAPIKeyInput, service: AIServiceConfiguration.videoGeneration.keychainService) {
+            videoAPIKeyInput = ""
+            videoAPIKeyState = .configured
+        }
+    }
+
+    private func saveVisionAPIKey() {
+        if APIKeyStore.save(visionAPIKeyInput, service: AIServiceConfiguration.visualUnderstanding.keychainService) {
+            visionAPIKeyInput = ""
+            visionAPIKeyState = .configured
+        }
+    }
+
+    private func clearVideoAPIKey() {
+        APIKeyStore.delete(service: AIServiceConfiguration.videoGeneration.keychainService)
+        videoAPIKeyInput = ""
+        videoAPIKeyState = .notConfigured
+    }
+
+    private func clearVisionAPIKey() {
+        APIKeyStore.delete(service: AIServiceConfiguration.visualUnderstanding.keychainService)
+        visionAPIKeyInput = ""
+        visionAPIKeyState = .notConfigured
+    }
+
+    private func testVideoConnection() {
+        videoConnectionStatus = .mockReady
+    }
+
+    private func testVisionConnection() {
+        visionConnectionStatus = .mockReady
+    }
+}
+
+private struct AIServiceConfiguration {
+    let title: String
+    let providerName: String
+    let systemImage: String
+    let description: String
+    let apiKeyTitle: String
+    let keychainService: String
+    let capabilities: [String]
+
+    static let videoGeneration = AIServiceConfiguration(
+        title: L10n.string("ai_services.video_generation"),
+        providerName: L10n.string("ai_services.mock_video_provider"),
+        systemImage: "play.rectangle",
+        description: L10n.string("ai_services.video_generation_description"),
+        apiKeyTitle: L10n.string("ai_services.video_api_key"),
+        keychainService: "com.pannotate.ai-services.video-generation",
+        capabilities: [
+            "ai_services.capability.image_to_video",
+            "ai_services.capability.continuation",
+            "ai_services.capability.job_status",
+            "ai_services.capability.retry",
+            "ai_services.capability.mock_failure"
+        ]
+    )
+
+    static let visualUnderstanding = AIServiceConfiguration(
+        title: L10n.string("ai_services.visual_understanding"),
+        providerName: L10n.string("ai_services.mock_vision_provider"),
+        systemImage: "eye",
+        description: L10n.string("ai_services.visual_understanding_description"),
+        apiKeyTitle: L10n.string("ai_services.visual_llm_api_key"),
+        keychainService: "com.pannotate.ai-services.visual-understanding",
+        capabilities: [
+            "ai_services.capability.annotation_summary",
+            "ai_services.capability.prompt_refinement",
+            "ai_services.capability.smart_mode_preview",
+            "ai_services.capability.mock_only"
+        ]
+    )
+}
+
+private enum APIKeyConfigurationState: Equatable {
+    case configured
+    case notConfigured
+
+    var title: String {
+        switch self {
+        case .configured:
+            L10n.string("ai_services.configured")
+        case .notConfigured:
+            L10n.string("ai_services.not_configured")
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .configured:
+            PannotateTheme.Colors.success
+        case .notConfigured:
+            PannotateTheme.Colors.tertiaryText
+        }
+    }
+}
+
+private enum ProviderConnectionStatus {
+    case notTested
+    case mockReady
+
+    var title: String {
+        switch self {
+        case .notTested:
+            L10n.string("ai_services.not_tested")
+        case .mockReady:
+            L10n.string("ai_services.mock_connection_ready")
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .notTested:
+            PannotateTheme.Colors.tertiaryText
+        case .mockReady:
+            PannotateTheme.Colors.success
+        }
     }
 }
 

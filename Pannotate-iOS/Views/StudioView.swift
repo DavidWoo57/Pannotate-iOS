@@ -22,6 +22,7 @@ struct StudioView: View {
     @State private var lastGeneratedInstruction: String?
     @State private var lastGenerationRequest: GenerationRequest?
     @State private var interpretationMode: AnnotationInterpretationMode = .fast
+    @State private var generationParameters: GenerationParameterState = .defaults
     @State private var loadedProjectID: UUID?
     @State private var isApplyingPersistedState = false
 
@@ -186,7 +187,11 @@ struct StudioView: View {
         .sheet(item: $generateReviewSession) { session in
             GenerateReviewSheet(session: session) { editedFinalPrompt in
                 generateReviewSession = nil
-                startMockGeneration(from: session, editedFinalPrompt: editedFinalPrompt)
+                startMockGeneration(
+                    from: session,
+                    editedFinalPrompt: editedFinalPrompt.finalPrompt,
+                    parameters: editedFinalPrompt.parameters
+                )
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -271,36 +276,57 @@ struct StudioView: View {
                     thumbnail: selectedMockThumbnail ?? .city,
                     image: selectedImage,
                     continuationSourceClipID: continuationContext?.id,
-                    continuationSourceClipTitle: continuationContext?.title
+                    continuationSourceClipTitle: continuationContext?.title,
+                    generationParameters: generationParameters
                 )
                 isPreparingGenerateReview = false
             }
         }
     }
 
-    private func startMockGeneration(from session: GenerateReviewSession, editedFinalPrompt: String) {
+    private func startMockGeneration(
+        from session: GenerateReviewSession,
+        editedFinalPrompt: String,
+        parameters: GenerationParameterState
+    ) {
         guard currentProject != nil, hasCanvasSource else { return }
 
+        generationParameters = parameters
+        persistStudioState()
         let finalPrompt = editedFinalPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? session.originalFinalPrompt
             : editedFinalPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = session.request.applyingGenerationParameters(parameters)
         let shouldClearContinuationAfterGeneration = continuationContext != nil
         lastGeneratedInstruction = finalPrompt
-        lastGenerationRequest = session.request
+        lastGenerationRequest = request
         isGenerating = true
 
         Task {
-            let submission = VideoGenerationSubmission(
-                request: session.request,
+            let baseSubmission = VideoGenerationSubmission(
+                request: request,
                 pipelineResult: session.pipelineResult,
                 title: session.title,
-                duration: session.request.mockDuration,
+                duration: parameters.duration.value,
                 thumbnail: session.thumbnail,
                 image: session.image,
                 continuationSourceClipID: session.continuationSourceClipID,
                 continuationSourceClipTitle: session.continuationSourceClipTitle,
                 finalVideoPrompt: finalPrompt,
                 originalGeneratedPrompt: session.originalFinalPrompt
+            )
+            let submission = VideoGenerationSubmission(
+                request: baseSubmission.request,
+                pipelineResult: baseSubmission.pipelineResult,
+                title: baseSubmission.title,
+                duration: baseSubmission.duration,
+                thumbnail: baseSubmission.thumbnail,
+                image: baseSubmission.image,
+                continuationSourceClipID: baseSubmission.continuationSourceClipID,
+                continuationSourceClipTitle: baseSubmission.continuationSourceClipTitle,
+                finalVideoPrompt: baseSubmission.finalVideoPrompt,
+                originalGeneratedPrompt: baseSubmission.originalGeneratedPrompt,
+                payload: GenerationPayloadBuilder.build(submission: baseSubmission)
             )
             var job = await videoGenerationService.submitGeneration(submission)
             await MainActor.run {
@@ -769,6 +795,7 @@ struct StudioView: View {
         selectedImage = state.selectedImageData.flatMap(UIImage.init(data:))
         imageScale = state.imageScale
         imageOffset = state.imageOffset
+        generationParameters = state.generationParameters
         successMessage = nil
         imageSelectionMessage = nil
         isApplyingPersistedState = false
@@ -785,7 +812,8 @@ struct StudioView: View {
                 selectedMockThumbnail: selectedMockThumbnail,
                 selectedImageData: selectedImage?.jpegData(compressionQuality: 0.82),
                 imageScale: imageScale,
-                imageOffset: imageOffset
+                imageOffset: imageOffset,
+                generationParameters: generationParameters
             )
         )
     }
@@ -845,9 +873,10 @@ struct StudioView: View {
             circleCount: circles.count,
             textAnnotations: textDetails,
             generationMode: activeGenerationMode,
-            mockDuration: "4s",
-            outputStyle: "Cinematic creator prototype",
-            quality: "Mock preview quality",
+            mockDuration: generationParameters.duration.value,
+            outputStyle: generationParameters.quality.outputStyle,
+            quality: generationParameters.quality.title,
+            generationParameters: generationParameters,
             startsFromPreviousFrame: continuationContext != nil,
             generatedInstruction: pipelineResult.finalVideoPrompt
         )
@@ -1548,18 +1577,27 @@ private struct GenerateReviewSession: Identifiable {
     let image: UIImage?
     let continuationSourceClipID: UUID?
     let continuationSourceClipTitle: String?
+    let generationParameters: GenerationParameterState
+}
+
+private struct GenerateReviewResult {
+    let finalPrompt: String
+    let parameters: GenerationParameterState
 }
 
 private struct GenerateReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     let session: GenerateReviewSession
-    let onConfirm: (String) -> Void
+    let onConfirm: (GenerateReviewResult) -> Void
     @State private var editedFinalPrompt: String
+    @State private var parameters: GenerationParameterState
+    @State private var showsAdvancedSettings = false
 
-    init(session: GenerateReviewSession, onConfirm: @escaping (String) -> Void) {
+    init(session: GenerateReviewSession, onConfirm: @escaping (GenerateReviewResult) -> Void) {
         self.session = session
         self.onConfirm = onConfirm
         _editedFinalPrompt = State(initialValue: session.originalFinalPrompt)
+        _parameters = State(initialValue: session.generationParameters)
     }
 
     var body: some View {
@@ -1569,6 +1607,8 @@ private struct GenerateReviewSheet: View {
                     summarySection
                     imageSection
                     promptSection
+                    generationSettingsSection
+                    payloadSummarySection
                     detailsSection
                 }
                 .padding(PannotateTheme.Metrics.pagePadding)
@@ -1585,7 +1625,12 @@ private struct GenerateReviewSheet: View {
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("generation.confirm_generate") {
-                        onConfirm(editedFinalPrompt)
+                        onConfirm(
+                            GenerateReviewResult(
+                                finalPrompt: editedFinalPrompt,
+                                parameters: sanitizedParameters
+                            )
+                        )
                         dismiss()
                     }
                     .fontWeight(.bold)
@@ -1660,18 +1705,99 @@ private struct GenerateReviewSheet: View {
         }
     }
 
+    private var generationSettingsSection: some View {
+        reviewCard(title: L10n.string("generation.settings")) {
+            VStack(alignment: .leading, spacing: 14) {
+                parameterPicker(
+                    title: L10n.string("generation.duration"),
+                    selection: $parameters.duration,
+                    options: GenerationDurationOption.allCases
+                )
+
+                parameterPicker(
+                    title: L10n.string("generation.aspect_ratio"),
+                    selection: $parameters.aspectRatio,
+                    options: GenerationAspectRatioOption.allCases
+                )
+
+                parameterPicker(
+                    title: L10n.string("generation.quality"),
+                    selection: $parameters.quality,
+                    options: GenerationQualityOption.allCases
+                )
+
+                DisclosureGroup(isExpanded: $showsAdvancedSettings) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        labeledParameterField(title: L10n.string("generation.negative_prompt")) {
+                            TextField(L10n.string("generation.negative_prompt_placeholder"), text: $parameters.negativePrompt, axis: .vertical)
+                                .lineLimit(2...4)
+                        }
+
+                        labeledParameterField(title: L10n.string("generation.seed")) {
+                            TextField(L10n.string("generation.automatic"), text: $parameters.seedText)
+                                .keyboardType(.numberPad)
+                        }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Label(L10n.string("generation.advanced"), systemImage: "slider.horizontal.3")
+                        .font(PannotateTheme.Typography.metadataEmphasis)
+                        .foregroundStyle(PannotateTheme.Colors.accent)
+                }
+            }
+        }
+    }
+
     private var detailsSection: some View {
         reviewCard(title: L10n.string("common.details")) {
             VStack(alignment: .leading, spacing: 10) {
                 metadataRow(label: L10n.string("generation.request_id"), value: String(session.request.id.uuidString.prefix(8)))
                 metadataRow(label: L10n.string("generation.prompt"), value: session.request.motionPrompt)
-                metadataRow(label: L10n.string("generation.duration"), value: session.request.mockDuration)
+                metadataRow(label: L10n.string("generation.duration"), value: sanitizedParameters.duration.value)
 
                 if let sourceClipTitle = session.continuationSourceClipTitle {
                     metadataRow(label: L10n.string("generation.source_clip"), value: sourceClipTitle)
                 }
             }
         }
+    }
+
+    private var payloadSummarySection: some View {
+        reviewCard(title: L10n.string("generation.api_payload_summary")) {
+            Text(apiPayloadSummary)
+                .font(PannotateTheme.Typography.metadata)
+                .foregroundStyle(PannotateTheme.Colors.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var apiPayloadSummary: String {
+        let finalPrompt = editedFinalPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? session.originalFinalPrompt
+            : editedFinalPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let submission = VideoGenerationSubmission(
+            request: session.request.applyingGenerationParameters(sanitizedParameters),
+            pipelineResult: session.pipelineResult,
+            title: session.title,
+            duration: sanitizedParameters.duration.value,
+            thumbnail: session.thumbnail,
+            image: session.image,
+            continuationSourceClipID: session.continuationSourceClipID,
+            continuationSourceClipTitle: session.continuationSourceClipTitle,
+            finalVideoPrompt: finalPrompt,
+            originalGeneratedPrompt: session.originalFinalPrompt
+        )
+
+        return GenerationPayloadBuilder.build(submission: submission).compactSummary
+    }
+
+    private var sanitizedParameters: GenerationParameterState {
+        var sanitized = parameters
+        sanitized.negativePrompt = sanitized.negativePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSeed = sanitized.seedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        sanitized.seedText = Int(trimmedSeed) == nil ? "" : trimmedSeed
+        return sanitized
     }
 
     private var generationContextText: String {
@@ -1714,6 +1840,52 @@ private struct GenerateReviewSheet: View {
                 .foregroundStyle(PannotateTheme.Colors.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func parameterPicker<Option: GenerationParameterOption>(
+        title: String,
+        selection: Binding<Option>,
+        options: Option.AllCases
+    ) -> some View where Option.AllCases: RandomAccessCollection {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(PannotateTheme.Typography.label)
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+            Picker(title, selection: selection) {
+                ForEach(Array(options), id: \.self) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private func labeledParameterField<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(PannotateTheme.Typography.label)
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(PannotateTheme.Colors.tertiaryText)
+
+            content()
+                .textFieldStyle(.plain)
+                .font(PannotateTheme.Typography.metadata)
+                .foregroundStyle(PannotateTheme.Colors.primaryText)
+                .padding(12)
+                .background(PannotateTheme.Colors.background.opacity(0.72))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(PannotateTheme.Colors.border, lineWidth: 1)
+                )
         }
     }
 }
@@ -1790,8 +1962,11 @@ private struct StudioPromptPreview {
         Interpretation mode: \(pipelineResult.interpretationMode.title) (\(pipelineResult.interpretationMode.requestValue))
         Continuation: \(request.startsFromPreviousFrame ? "Yes" : "No")
         Mock duration: \(request.mockDuration)
+        Aspect ratio: \(request.generationParameters.aspectRatio.value)
         Output style: \(request.outputStyle)
         Quality: \(request.quality)
+        Negative prompt: \(request.generationParameters.negativePrompt.isEmpty ? "None" : request.generationParameters.negativePrompt)
+        Seed: \(request.generationParameters.seedText.isEmpty ? "Automatic" : request.generationParameters.seedText)
         Motion prompt: \(request.motionPrompt)
         Text annotations: \(request.textAnnotations.isEmpty ? "None" : request.textAnnotations.joined(separator: "; "))
         """
@@ -1851,8 +2026,11 @@ private struct StudioPromptPreview {
           "smartMockResult": "\(jsonEscaped(pipelineResult.smartMockResult))",
           "finalVideoPrompt": "\(jsonEscaped(pipelineResult.finalVideoPrompt))",
           "duration": "\(request.mockDuration)",
+          "aspectRatio": "\(request.generationParameters.aspectRatio.value)",
           "outputStyle": "\(jsonEscaped(request.outputStyle))",
           "quality": "\(jsonEscaped(request.quality))",
+          "negativePrompt": "\(jsonEscaped(request.generationParameters.negativePrompt))",
+          "seed": "\(request.generationParameters.seedText.isEmpty ? "automatic" : jsonEscaped(request.generationParameters.seedText))",
           "continueFromLastFrame": \(request.startsFromPreviousFrame ? "true" : "false")
         }
         """

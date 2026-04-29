@@ -165,6 +165,34 @@ enum ProjectActivityType: String, Codable {
     }
 }
 
+struct OutputMediaMetadata: Codable, Equatable {
+    let remoteVideoURL: URL?
+    let localVideoFileURL: URL?
+    let thumbnailReference: String?
+    let hasThumbnailImage: Bool
+    let duration: String?
+    let resolution: String?
+    let fileSize: String?
+    let isPlaybackAvailable: Bool
+    let isExportAvailable: Bool
+    let isMockResult: Bool
+}
+
+struct GeneratedOutputResult: Codable, Equatable {
+    let providerID: String
+    let providerName: String
+    let providerJobID: String?
+    let modelID: String?
+    let createdAt: Date
+    let completedAt: Date?
+    let duration: String
+    let generationParameterSummary: String?
+    let payloadSummary: String?
+    let failureReason: String?
+    let rawProviderMetadata: [String: String]
+    let media: OutputMediaMetadata
+}
+
 struct GeneratedClip: Identifiable, Codable {
     let id: UUID
     let title: String
@@ -183,6 +211,13 @@ struct GeneratedClip: Identifiable, Codable {
     let continuationSourceClipID: UUID?
     let continuationSourceClipTitle: String?
     let failureReason: String?
+    let generationProviderID: String?
+    let generationProviderName: String?
+    let providerJobID: String?
+    let providerModelID: String?
+    let generationPayloadSummary: String?
+    let generationParameters: GenerationParameterState?
+    let outputResult: GeneratedOutputResult?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -202,6 +237,13 @@ struct GeneratedClip: Identifiable, Codable {
         case continuationSourceClipID
         case continuationSourceClipTitle
         case failureReason
+        case generationProviderID
+        case generationProviderName
+        case providerJobID
+        case providerModelID
+        case generationPayloadSummary
+        case generationParameters
+        case outputResult
     }
 
     init(
@@ -221,7 +263,14 @@ struct GeneratedClip: Identifiable, Codable {
         generationMode: GenerationMode? = nil,
         continuationSourceClipID: UUID? = nil,
         continuationSourceClipTitle: String? = nil,
-        failureReason: String? = nil
+        failureReason: String? = nil,
+        generationProviderID: String? = nil,
+        generationProviderName: String? = nil,
+        providerJobID: String? = nil,
+        providerModelID: String? = nil,
+        generationPayloadSummary: String? = nil,
+        generationParameters: GenerationParameterState? = nil,
+        outputResult: GeneratedOutputResult? = nil
     ) {
         self.id = id
         self.title = title
@@ -240,6 +289,13 @@ struct GeneratedClip: Identifiable, Codable {
         self.continuationSourceClipID = continuationSourceClipID
         self.continuationSourceClipTitle = continuationSourceClipTitle
         self.failureReason = failureReason
+        self.generationProviderID = generationProviderID
+        self.generationProviderName = generationProviderName
+        self.providerJobID = providerJobID
+        self.providerModelID = providerModelID
+        self.generationPayloadSummary = generationPayloadSummary
+        self.generationParameters = generationParameters
+        self.outputResult = outputResult
     }
 
     init(from decoder: Decoder) throws {
@@ -261,6 +317,13 @@ struct GeneratedClip: Identifiable, Codable {
         continuationSourceClipID = try container.decodeIfPresent(UUID.self, forKey: .continuationSourceClipID)
         continuationSourceClipTitle = try container.decodeIfPresent(String.self, forKey: .continuationSourceClipTitle)
         failureReason = try container.decodeIfPresent(String.self, forKey: .failureReason)
+        generationProviderID = try container.decodeIfPresent(String.self, forKey: .generationProviderID)
+        generationProviderName = try container.decodeIfPresent(String.self, forKey: .generationProviderName)
+        providerJobID = try container.decodeIfPresent(String.self, forKey: .providerJobID)
+        providerModelID = try container.decodeIfPresent(String.self, forKey: .providerModelID)
+        generationPayloadSummary = try container.decodeIfPresent(String.self, forKey: .generationPayloadSummary)
+        generationParameters = try container.decodeIfPresent(GenerationParameterState.self, forKey: .generationParameters)
+        outputResult = try container.decodeIfPresent(GeneratedOutputResult.self, forKey: .outputResult)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -282,6 +345,13 @@ struct GeneratedClip: Identifiable, Codable {
         try container.encodeIfPresent(continuationSourceClipID, forKey: .continuationSourceClipID)
         try container.encodeIfPresent(continuationSourceClipTitle, forKey: .continuationSourceClipTitle)
         try container.encodeIfPresent(failureReason, forKey: .failureReason)
+        try container.encodeIfPresent(generationProviderID, forKey: .generationProviderID)
+        try container.encodeIfPresent(generationProviderName, forKey: .generationProviderName)
+        try container.encodeIfPresent(providerJobID, forKey: .providerJobID)
+        try container.encodeIfPresent(providerModelID, forKey: .providerModelID)
+        try container.encodeIfPresent(generationPayloadSummary, forKey: .generationPayloadSummary)
+        try container.encodeIfPresent(generationParameters, forKey: .generationParameters)
+        try container.encodeIfPresent(outputResult, forKey: .outputResult)
     }
 }
 
@@ -302,6 +372,7 @@ struct GenerationRequest: Identifiable {
     let mockDuration: String
     let outputStyle: String
     let quality: String
+    let generationParameters: GenerationParameterState
     let startsFromPreviousFrame: Bool
     let generatedInstruction: String
 
@@ -322,6 +393,7 @@ struct GenerationRequest: Identifiable {
         mockDuration: String,
         outputStyle: String,
         quality: String,
+        generationParameters: GenerationParameterState = .defaults,
         startsFromPreviousFrame: Bool,
         generatedInstruction: String
     ) {
@@ -341,8 +413,33 @@ struct GenerationRequest: Identifiable {
         self.mockDuration = mockDuration
         self.outputStyle = outputStyle
         self.quality = quality
+        self.generationParameters = generationParameters
         self.startsFromPreviousFrame = startsFromPreviousFrame
         self.generatedInstruction = generatedInstruction
+    }
+
+    func applyingGenerationParameters(_ parameters: GenerationParameterState) -> GenerationRequest {
+        GenerationRequest(
+            id: id,
+            createdAt: createdAt,
+            projectID: projectID,
+            projectName: projectName,
+            sourceImageStatus: sourceImageStatus,
+            sourceClipID: sourceClipID,
+            sourceClipTitle: sourceClipTitle,
+            motionPrompt: motionPrompt,
+            annotationSummary: annotationSummary,
+            strokeCount: strokeCount,
+            circleCount: circleCount,
+            textAnnotations: textAnnotations,
+            generationMode: generationMode,
+            mockDuration: parameters.duration.value,
+            outputStyle: parameters.quality.outputStyle,
+            quality: parameters.quality.title,
+            generationParameters: parameters,
+            startsFromPreviousFrame: startsFromPreviousFrame,
+            generatedInstruction: generatedInstruction
+        )
     }
 }
 
@@ -457,6 +554,18 @@ struct StudioProjectState: Codable {
     var selectedImageData: Data?
     var imageScale: CGFloat
     var imageOffset: CGSize
+    var generationParameters: GenerationParameterState
+
+    private enum CodingKeys: String, CodingKey {
+        case motionPrompt
+        case interpretationMode
+        case annotations
+        case selectedMockThumbnail
+        case selectedImageData
+        case imageScale
+        case imageOffset
+        case generationParameters
+    }
 
     init(
         motionPrompt: String = "",
@@ -465,7 +574,8 @@ struct StudioProjectState: Codable {
         selectedMockThumbnail: ThumbnailStyle? = nil,
         selectedImageData: Data? = nil,
         imageScale: CGFloat = 1,
-        imageOffset: CGSize = .zero
+        imageOffset: CGSize = .zero,
+        generationParameters: GenerationParameterState = .defaults
     ) {
         self.motionPrompt = motionPrompt
         self.interpretationMode = interpretationMode
@@ -474,6 +584,31 @@ struct StudioProjectState: Codable {
         self.selectedImageData = selectedImageData
         self.imageScale = imageScale
         self.imageOffset = imageOffset
+        self.generationParameters = generationParameters
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        motionPrompt = try container.decodeIfPresent(String.self, forKey: .motionPrompt) ?? ""
+        interpretationMode = try container.decodeIfPresent(AnnotationInterpretationMode.self, forKey: .interpretationMode) ?? .fast
+        annotations = try container.decodeIfPresent([StudioAnnotation].self, forKey: .annotations) ?? []
+        selectedMockThumbnail = try container.decodeIfPresent(ThumbnailStyle.self, forKey: .selectedMockThumbnail)
+        selectedImageData = try container.decodeIfPresent(Data.self, forKey: .selectedImageData)
+        imageScale = try container.decodeIfPresent(CGFloat.self, forKey: .imageScale) ?? 1
+        imageOffset = try container.decodeIfPresent(CGSize.self, forKey: .imageOffset) ?? .zero
+        generationParameters = try container.decodeIfPresent(GenerationParameterState.self, forKey: .generationParameters) ?? .defaults
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(motionPrompt, forKey: .motionPrompt)
+        try container.encode(interpretationMode, forKey: .interpretationMode)
+        try container.encode(annotations, forKey: .annotations)
+        try container.encodeIfPresent(selectedMockThumbnail, forKey: .selectedMockThumbnail)
+        try container.encodeIfPresent(selectedImageData, forKey: .selectedImageData)
+        try container.encode(imageScale, forKey: .imageScale)
+        try container.encode(imageOffset, forKey: .imageOffset)
+        try container.encode(generationParameters, forKey: .generationParameters)
     }
 }
 
